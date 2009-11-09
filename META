@@ -1,0 +1,9 @@
+# Specifications for the "pycaml" library:
+requires = "unix str"
+description = "Python - OCaml interface"
+version = "0.1"
+browse_interfaces = " Pycaml "
+archive(byte) = "pycaml.cma"
+archive(native) = "pycaml.cmxa"
+#linkopts=""
+
