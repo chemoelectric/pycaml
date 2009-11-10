@@ -6,8 +6,12 @@ Based on the work of:
   * Dr. Thomas Fischbacher and Dr. Hans Fangohr:
        http://nmag.soton.ac.uk/tf/pycaml.html
 
-As modified primarily for use with Kompostilo Typesetter:
-http://kompostilo.googlecode.com
+Doctors Fischbacher and Fangohr included the following acknowledgment:
+"This work has been supported by the EPSRC Grant GR/T09156/01 (UK)."
+(http://www.epsrc.ac.uk/)
+
+This version has been modified primarily for use with Kompostilo
+Typesetter: http://kompostilo.googlecode.com
 
 The author, Barry Schwartz, is disabled and so unable to provide much
 support. He encourages people to fork off their own versions and have
@@ -15,11 +19,4 @@ a lot of fun. :)
 
 Distributed under the GNU Lesser General Public License, version 2.1.
 
-
-
-Doctors Fischbacher and Fangohr included the following acknowledgment:
-"This work has been supported by the EPSRC Grant GR/T09156/01 (UK)."
-(http://www.epsrc.ac.uk/)
-
-A Gentoo ebuild is available at
-http://code.google.com/p/kompostilo/source/browse/support-libraries/gentoo-ebuilds/pycaml-kompostilo-9999.ebuild
+An ebuild is included for the benefit of Gentoo users.

@@ -495,6 +495,7 @@ let pytype_name pt =
   | TupleType -> "Python-Tuple"
   | StringType -> "Python-String"
   | UnicodeType -> "Python-Unicode"
+  | BoolType -> "Python-Bool"
   | IntType -> "Python-Int"
   | FloatType -> "Python-Float"
   | ListType -> "Python-List"
