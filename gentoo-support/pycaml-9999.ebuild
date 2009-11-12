@@ -15,7 +15,7 @@ LICENSE="LGPL-2.1"
 SLOT="0"
 KEYWORDS="~amd64 ppc x86"
 
-RDEPEND="dev-ml/ocaml-make-6.29.3"
+RDEPEND=">=dev-ml/ocaml-make-6.29.3"
 
 DEPEND=">=dev-lang/ocaml-3.11.1
         >=dev-lang/python-2.6.4
