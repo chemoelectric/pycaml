@@ -1,5 +1,22 @@
 (** Embedding Python into OCaml.
 
+ (C) arty 2002
+
+ This library is free software; you can redistribute it and/or modify
+ it under the terms of the GNU Lesser General Public License as
+ published by the Free Software Foundation; either version 2.1 of the
+ License, or (at your option) any later version.
+
+ This library is distributed in the hope that it will be useful, but
+ WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+ USA
+
    A Derivative of Art Yerkes' 2002 Pycaml module.
    
 
@@ -34,11 +51,12 @@ type pyobject
 type funcptr 
 type funcent = (funcptr * int * int * bool)
 
-type pymodule_func = { pyml_name : string ; 
-		       pyml_func : (pyobject -> pyobject) ;
-		       pyml_flags : int ;
-		       pyml_doc : string }
-
+type pymodule_func = {
+  pyml_name : string ; 
+  pyml_func : (pyobject -> pyobject) ;
+  pyml_flags : int ;
+  pyml_doc : string;
+}
 
 val py_profile_reset: unit -> unit
 val py_profile_report: unit -> (string * float * float) array
@@ -206,9 +224,8 @@ val pytype_name: pyobject_type -> string
 (** Return the last value that was computed interactively at the Python prompt *)
 val python_last_value: unit -> pyobject
 
-val py_true : pyobject
-val py_false : pyobject
-val py_bool_type: pyobject_type
+val py_true : unit -> pyobject
+val py_false : unit -> pyobject
 val py_is_true : pyobject -> bool
 
 (**
@@ -564,11 +581,14 @@ val pyobject_not : pyobject -> int
 
 val pycallable_check : pyobject -> int 
 
-val pyobject_compare : pyobject * pyobject -> int 
 val pyobject_hasattr : pyobject * pyobject -> int 
 val pyobject_richcomparebool : pyobject * pyobject * int -> int 
 val pyobject_setattrstring : pyobject * string * pyobject -> int 
 val pyobject_hasattrstring : pyobject * string -> int 
+
+IFDEF PYCAML2 THEN
+val pyobject_compare : pyobject * pyobject -> int 
+END
 
 (* Currently not implemented.
 val pynumber_coerce : pyobject * pyobject -> (pyobject * pyobject) option
@@ -590,8 +610,10 @@ val pystring_asstringandsize : pyobject -> string (* Legacy support *)
 val pybytes_fromstring : string -> pyobject 
 val pystring_fromstring : string -> pyobject (* Legacy support *)
 
+IFDEF PYMAJOR2 THEN
 val pybytes_format : pyobject * pyobject -> pyobject
 val pystring_format : pyobject * pyobject -> pyobject (* Legacy support *)
+END
 
 val pyunicode_asutf8string : pyobject -> pyobject
 val pyunicode_decodeutf8 : (string * string option) -> pyobject
@@ -613,7 +635,9 @@ val pydict_setitemstring : pyobject * string * pyobject -> int
 
 val pyint_fromlong : int64 -> pyobject 
 val pyint_aslong : pyobject -> int64 
-val pyint_getmax : unit -> int64 
+IFDEF PYMAJOR2 THEN
+val pyint_getmax : unit -> int64
+END
 
 val pyfloat_fromdouble : float -> pyobject 
 val pyfloat_asdouble : pyobject -> float 
@@ -643,15 +667,23 @@ val pyerr_givenexceptionmatches : pyobject * pyobject -> int
 val pyerr_exceptionmatches : pyobject -> int 
 val pyerr_normalizeexception : pyobject * pyobject * pyobject -> pyobject * pyobject * pyobject 
 
+IFDEF PYMAJOR2 THEN
 val pyclass_new : pyobject * pyobject * pyobject -> pyobject 
-
 val pyinstance_new : pyobject * pyobject * pyobject -> pyobject 
-val pyinstance_newraw : pyobject * pyobject -> pyobject 
+val pyinstance_newraw : pyobject * pyobject -> pyobject
+END
 
+IFDEF PYMAJOR2 THEN
 val pymethod_new : pyobject * pyobject * pyobject -> pyobject 
+ELSE
+val pymethod_new : pyobject * pyobject -> pyobject 
+END
+
 val pymethod_function : pyobject -> pyobject 
 val pymethod_self : pyobject -> pyobject 
+IFDEF PYMAJOR2 THEN
 val pymethod_class : pyobject -> pyobject 
+END
 
 val pyimport_getmagicnumber : unit -> int64 
 val pyimport_execcodemodule : pyobject * string -> pyobject 
@@ -671,7 +703,10 @@ val pyeval_getbuiltins : unit -> pyobject
 val pyeval_getglobals : unit -> pyobject 
 val pyeval_getlocals : unit -> pyobject 
 (* val pyeval_getframe : unit -> pyobject  -- FIX: see comment in stubs code. *)
-val pyeval_getrestricted : unit -> int 
+
+IFDEF PYMAJOR2 THEN
+val pyeval_getrestricted : unit -> int
+END
 
 val pyobject_type : pyobject -> pyobject 
 val pyobject_size : pyobject -> int 
@@ -686,7 +721,11 @@ val pynumber_check : pyobject -> int
 val pynumber_add : pyobject * pyobject -> pyobject 
 val pynumber_subtract : pyobject * pyobject -> pyobject 
 val pynumber_multiply : pyobject * pyobject -> pyobject 
+val pynumber_truedivide : pyobject * pyobject -> pyobject 
+val pynumber_floordivide : pyobject * pyobject -> pyobject 
+IFDEF PYMAJOR2 THEN
 val pynumber_divide : pyobject * pyobject -> pyobject 
+END
 val pynumber_remainder : pyobject * pyobject -> pyobject 
 val pynumber_divmod : pyobject * pyobject -> pyobject 
 val pynumber_power : pyobject * pyobject * pyobject -> pyobject 
@@ -699,13 +738,19 @@ val pynumber_rshift : pyobject * pyobject -> pyobject
 val pynumber_and : pyobject * pyobject -> pyobject 
 val pynumber_xor : pyobject * pyobject -> pyobject 
 val pynumber_or : pyobject * pyobject -> pyobject 
-val pynumber_int : pyobject -> pyobject 
+IFDEF PYMAJOR2 THEN
+val pynumber_int : pyobject -> pyobject
+END
 val pynumber_long : pyobject -> pyobject 
 val pynumber_float : pyobject -> pyobject 
 val pynumber_inplaceadd : pyobject * pyobject -> pyobject 
 val pynumber_inplacesubtract : pyobject * pyobject -> pyobject 
 val pynumber_inplacemultiply : pyobject * pyobject -> pyobject 
+val pynumber_inplacetruedivide : pyobject * pyobject -> pyobject 
+val pynumber_inplacefloordivide : pyobject * pyobject -> pyobject 
+IFDEF PYMAJOR2 THEN
 val pynumber_inplacedivide : pyobject * pyobject -> pyobject 
+END
 val pynumber_inplaceremainder : pyobject * pyobject -> pyobject 
 val pynumber_inplacelshift : pyobject * pyobject -> pyobject 
 val pynumber_inplacershift : pyobject * pyobject -> pyobject 

@@ -9,18 +9,13 @@ PACKS=unix str
 SOURCES=pycaml.ml pycaml.mli pycaml_stubs.c
 RESULT=pycaml
 THREADS=yes
-#NO_CUSTOM=NO_CUSTOM
 LDFLAGS = -lpython${PYVER}
 CFLAGS  = -g -O2 -fPIC -Wall -Werror
+OCAMLFLAGS = -pp "camlp4o Camlp4MacroParser.cmo -D PYMAJOR`echo ${PYVER} | sed -e 's/\\..*//'`"
+OCAMLDEP = ocamldep ${OCAMLFLAGS}
 
-#EXTLIBDIRS=\ $(LIBDIRS)
-#OCAMLLDFLAGS=$(DEBUGFLAGS) -linkall
 INCDIRS=$(PYTHON_INCLUDE_PATH)
 LIBDIRS=$(PYTHON_LIBRARY_PATH)
-
-# We turn on debugger support in all our modules for now.
-#OCAMLBCFLAGS=$(OCAMLDEBUGFLAGS)
-#OCAMLBLDFLAGS=$(OCAMLDEBUGFLAGS)
 
 all: pycaml_stubs.h native-code-library byte-code-library
 

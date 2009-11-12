@@ -1,6 +1,21 @@
 /*
  * (C) arty 2002
- * This software is covered under the GNU lesser general public license
+
+ This library is free software; you can redistribute it and/or modify
+ it under the terms of the GNU Lesser General Public License as
+ published by the Free Software Foundation; either version 2.1 of the
+ License, or (at your option) any later version.
+
+ This library is distributed in the hope that it will be useful, but
+ WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+ USA
+
 
  Heavy modifications (Bugfixes!) done by T.F.
 
@@ -15,52 +30,172 @@
  
  */
 
-#include "Python.h"
-#include "caml/mlvalues.h"
-#include "caml/memory.h"
-#include "caml/fail.h"
-#include "caml/callback.h"
-#include "caml/custom.h"
-#include "caml/alloc.h"
+#include <Python.h>
+#include <caml/mlvalues.h>
+#include <caml/memory.h>
+#include <caml/fail.h>
+#include <caml/callback.h>
+#include <caml/custom.h>
+#include <caml/alloc.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include "pycaml_stubs.h"
 
-static void *getcustom( value v ) { return *((void **)Data_custom_val(v)); }
+#if 3 <= PY_MAJOR_VERSION
+#include <wchar.h>
+#endif
 
-static void pydecref( value v ) {
-    if( getcustom(v) )
-      { 
-	/* printf("GC - pydecref obj 0x%08x to refcount=%d\nOBJ=",getcustom(v),((PyObject *)getcustom(v))->ob_refcnt-1);
-	   PyObject_Print((PyObject *)getcustom(v),stdout,0);
-	   printf("END OBJ\n");
-	   fflush(stdout);
-	*/
-	Py_DECREF((PyObject *)getcustom(v));
-      }
+
+static void *xmalloc(size_t size)
+{
+    void *p = malloc(size);
+    if (p == NULL) {
+        fprintf(stderr, "Virtual memory exhausted\n");
+        exit(1);
+    }
+    return p;
 }
 
-static int pycompare( value v1, value v2 ) {
+#if 3 <= PY_MAJOR_VERSION
+
+static wchar_t *copy_to_wide_string(const char *s)
+{
+    size_t n;
+    wchar_t *ws;
+
+    ws = NULL;
+    n = mbstowcs(NULL, s, 0) + 1;
+    if (n != (size_t) -1) {
+        ws = xmalloc(n * sizeof (wchar_t));
+        mbstowcs(ws, s, n);
+    }
+    return ws;
+}
+
+static size_t multibyte_strlen(const wchar_t *ws)
+{
+    char buffer[MB_CUR_MAX];
+    int i;
+    size_t size;
+    size_t n;
+    mbstate_t ps;
+
+    n = wcrtomb(NULL, L'\0', &ps); /* Initialize the parse state. */
+    size = 0;
+    i = 0;
+    while (size != (size_t) -1 && ws[i] != L'\0') {
+        n = wcrtomb(buffer, ws[i], &ps);
+        if (n != (size_t) -1)
+            size += n;
+        else
+            size = (size_t) -1;
+        i++;
+    }
+    return size;
+}
+
+static char *copy_from_wide_string(const wchar_t *ws)
+{
+    char *s;
+    int i;
+    int j;
+    size_t size;
+    size_t n;
+    mbstate_t ps;
+
+    s = NULL;
+    size = multibyte_strlen(ws);
+    if (size != (size_t) -1) {
+        s = xmalloc((size + 1) * sizeof (char));
+        n = wcrtomb(NULL, L'\0', &ps); /* Initialize the parse state. */
+        j = 0;
+        i = 0;
+        while (ws[i] != L'\0') {
+            n = wcrtomb(s + j, ws[i], &ps);
+            j += n;
+            i++;
+        }
+        s[j] = '\0';
+    }        
+    return s;
+}
+
+#endif /* 3 <= PY_MAJOR_VERSION */
+
+static void *getcustom( value v )
+{
+    return *((void **)Data_custom_val(v));
+}
+
+static void pydecref( value v )
+{
+    if( getcustom(v) ) { 
+        /* printf("GC - pydecref obj 0x%08x to refcount=%d\nOBJ=",getcustom(v),((PyObject *)getcustom(v))->ob_refcnt-1);
+           PyObject_Print((PyObject *)getcustom(v),stdout,0);
+           printf("END OBJ\n");
+           fflush(stdout);
+        */
+        Py_DECREF((PyObject *)getcustom(v));
+    }
+}
+
+#if PY_MAJOR_VERSION <= 2
+
+static int pycompare( value v1, value v2 )
+{
     int result;
-    if( getcustom(v1) && !getcustom(v2) ) return -1;
-    if( getcustom(v2) && !getcustom(v1) ) return 1;
-    if( !getcustom(v1) && !getcustom(v2) ) return 0;
-    PyObject_Cmp((PyObject *)getcustom(v1),
-		 (PyObject *)getcustom(v2),&result);
+
+    if (getcustom(v1) && !getcustom(v2))
+        result = -1;
+    else if (getcustom(v2) && !getcustom(v1))
+        result = 1;
+    else if (!getcustom(v1) && !getcustom(v2))
+        result = 0;
+    else
+        PyObject_Cmp((PyObject *)getcustom(v1),
+                     (PyObject *)getcustom(v2), &result);
     return result;
 }
 
-static long pyhash( value v ) {
-    if( getcustom(v) ) return PyObject_Hash((PyObject *)getcustom(v));
-    else return 0;
+#else /* PY_MAJOR_VERSION <= 2 */
+
+static int pycompare(value v1, value v2)
+{
+    int result;
+
+    if (1 == PyObject_RichCompareBool((PyObject *) getcustom(v1),
+                                      (PyObject *) getcustom(v2), Py_EQ))
+        result = 0;
+    else if (1 == PyObject_RichCompareBool((PyObject *) getcustom(v1),
+                                           (PyObject *) getcustom(v2), Py_LT))
+        result = -1;
+    else if (1 == PyObject_RichCompareBool((PyObject *) getcustom(v1),
+                                           (PyObject *) getcustom(v2), Py_GT))
+        result = 1;
+    else
+        caml_failwith("PyObject_RichCompareBool error");
+
+    return result;
 }
 
-static unsigned long pydeserialize( void *dst ) {
-    return 0;
+#endif /* PY_MAJOR_VERSION <= 2 */
+
+static long pyhash( value v )
+{
+    if (getcustom(v))
+        return PyObject_Hash((PyObject *)getcustom(v));
+    else
+        return 0L;
 }
 
-struct custom_operations pyops = {
+static unsigned long pydeserialize( void *dst )
+{
+    return 0L;
+}
+
+struct custom_operations pyops =
+{
     "PythonObject",
     pydecref,
     pycompare,
@@ -69,7 +204,8 @@ struct custom_operations pyops = {
     pydeserialize
 };
 
-struct custom_operations fnops = {
+struct custom_operations fnops =
+{
     "FuncPointer",
     NULL,
     NULL,
@@ -78,11 +214,13 @@ struct custom_operations fnops = {
     NULL
 };
 
-static value pywrap( PyObject *obj ) {
+static value pywrap(PyObject *obj)
+{
     CAMLparam0();
     CAMLlocal1(v);
 
-    if(obj)Py_INCREF(obj);
+    if (obj != NULL)
+        Py_INCREF(obj);
 
     v = caml_alloc_custom( &pyops, sizeof( PyObject * ), 100, 30000000 );
     *((PyObject **)Data_custom_val(v)) = obj;
@@ -90,7 +228,8 @@ static value pywrap( PyObject *obj ) {
 }
 
 /* T.F.: we may want to pywrap in such a way that we steal the reference: */
-static value pywrap_steal( PyObject *obj ) {
+static value pywrap_steal( PyObject *obj )
+{
     CAMLparam0();
     CAMLlocal1(v);
 
@@ -99,18 +238,21 @@ static value pywrap_steal( PyObject *obj ) {
     CAMLreturn(v);
 }
 
-static PyObject *pyunwrap( value v ) {
+static PyObject *pyunwrap( value v )
+{
     return *((PyObject **)Data_custom_val(v));
 }
 
-static void camldestr( void *v ) {
+static void camldestr( void *v )
+{
     value *valptr = (value *)v;
     /* printf("DDD camlwrap remove_global_root(0x%08x)\n",valptr);fflush(stdout); */
     remove_global_root(valptr);
     free( v );
 }
 
-static void camldestr_pill( void *v, void *unused_dummy_receiving_ocamlpill_token ) {
+static void camldestr_pill( void *v, void *unused_dummy_receiving_ocamlpill_token )
+{
     value *valptr = (value *)v;
     /* printf("DDD camlwrap remove_global_root(0x%08x)\n",valptr);fflush(stdout); */
     remove_global_root(valptr);
@@ -141,8 +283,9 @@ static void camldestr_pill( void *v, void *unused_dummy_receiving_ocamlpill_toke
  */
 static const char* ocamlpill_token="CAML";
 
-static PyObject *camlwrap( value val, void *aux_str, int size ) {
-    value *v = (value *)malloc(sizeof(value) + size);
+static PyObject *camlwrap( value val, void *aux_str, int size )
+{
+    value *v = (value *) xmalloc(sizeof(value) + size);
     *v = val;
     memcpy((void *)v+sizeof(value),aux_str,size);
     register_global_root(v);
@@ -150,8 +293,9 @@ static PyObject *camlwrap( value val, void *aux_str, int size ) {
     return PyCObject_FromVoidPtr(v,camldestr);
 }
 
-static PyObject *camlwrap_pill( value val, void *aux_str, int size ) {
-    value *v = (value *)malloc(sizeof(value) + size);
+static PyObject *camlwrap_pill( value val, void *aux_str, int size )
+{
+    value *v = (value *) xmalloc(sizeof(value) + size);
     *v = val;
     memcpy((void *)v+sizeof(value),aux_str,size);
     register_global_root(v);
@@ -159,7 +303,8 @@ static PyObject *camlwrap_pill( value val, void *aux_str, int size ) {
 }
 
 
-static void *caml_aux( PyObject *obj ) {
+static void *caml_aux( PyObject *obj )
+{
     value *v = (value *)PyCObject_AsVoidPtr( obj );
     return (void *)v+sizeof(value);
 }
@@ -184,7 +329,8 @@ PyObject *pycall_callback_buggy( PyObject *obj, PyObject *args ) {
    this is how I suppose it should work:
 */
 
-PyObject *pycall_callback( PyObject *obj, PyObject *args ) {
+PyObject *pycall_callback( PyObject *obj, PyObject *args )
+{
   CAMLparam0();
   CAMLlocal3(ml_out,ml_func,ml_args);
   PyObject *out;
@@ -221,14 +367,28 @@ static FILE *make_FILE(int fd_int)
 
 /*-----------------------------------------------------------------------*/
 
-value pynull( value unit ) {
+value pynull(value unit)
+{
     CAMLparam1(unit);
     CAMLreturn(pywrap(0));
 }
 
-value pynone( value unit ) {
+value pynone(value unit)
+{
     CAMLparam1(unit);
     CAMLreturn(pywrap(Py_None));
+}
+
+value py_true(value unit)
+{
+    CAMLparam1(unit);
+    CAMLreturn(pywrap(Py_True));
+}
+
+value py_false(value unit)
+{
+    CAMLparam1(unit);
+    CAMLreturn(pywrap(Py_False));
 }
 
 /*-----------------------------------------------------------------------*/
@@ -263,6 +423,8 @@ Type2(PyErr_PrintEx)
 
 /*-----------------------------------------------------------------------*/
 
+#if PY_MAJOR_VERSION <= 2
+    
 #define Type3(func)                                          \
     CAMLprim value func##_wrapper(value obj)                 \
     {                                                        \
@@ -271,6 +433,22 @@ Type2(PyErr_PrintEx)
         func(String_val(obj));                               \
         CAMLreturn(Val_unit);                                \
     }
+
+#else
+
+#define Type3(func)                                          \
+    CAMLprim value func##_wrapper(value obj)                 \
+    {                                                        \
+        CAMLparam1(obj);                                     \
+                                                             \
+        char *s = String_val(obj);                           \
+        wchar_t *ws = copy_to_wide_string(s);                \
+        func(ws);                                            \
+        free(ws);                                            \
+        CAMLreturn(Val_unit);                                \
+    }
+
+#endif
 
 Type3(Py_SetProgramName)
 Type3(Py_SetPythonHome)
@@ -287,7 +465,10 @@ Type3(Py_SetPythonHome)
     }
 
 Type4(Py_IsInitialized)
+
+#if PY_MAJOR_VERSION <= 2
 Type4(PyEval_GetRestricted)
+#endif
 
 /*-----------------------------------------------------------------------*/
 
@@ -355,17 +536,44 @@ Type7(PyRun_SimpleFileEx)
         CAMLreturn(caml_copy_string(func()));                \
     }
 
-Type8(Py_GetProgramName)
-Type8(Py_GetPythonHome)
-Type8(Py_GetProgramFullPath)
-Type8(Py_GetPrefix)
-Type8(Py_GetExecPrefix)
-Type8(Py_GetPath)
+#if PY_MAJOR_VERSION <= 2
+#define Type8a Type8
+#else
+#define Type8a(func)                                           \
+    CAMLprim value func##_wrapper(value unit)                  \
+    {                                                          \
+        CAMLparam1(unit);                                      \
+        CAMLlocal1(string);                                    \
+        wchar_t *ws;                                           \
+        char *s;                                               \
+                                                               \
+        ws = func();                                           \
+        if (ws == NULL)                                        \
+            string = pynull(Val_unit);                         \
+        else                                                   \
+            {                                                  \
+                s = copy_from_wide_string(ws);                 \
+                if (s == NULL)                                 \
+                    string = pynull(Val_unit);                 \
+                else                                           \
+                    string = caml_copy_string(s);              \
+            }                                                  \
+        CAMLreturn(string);                                    \
+    }
+#endif
+
 Type8(Py_GetVersion)
 Type8(Py_GetPlatform)
 Type8(Py_GetCopyright)
 Type8(Py_GetCompiler)
 Type8(Py_GetBuildInfo)
+
+Type8a(Py_GetProgramName)
+Type8a(Py_GetPythonHome)
+Type8a(Py_GetProgramFullPath)
+Type8a(Py_GetPrefix)
+Type8a(Py_GetExecPrefix)
+Type8a(Py_GetPath)
 
 /*-----------------------------------------------------------------------*/    
 
@@ -490,10 +698,26 @@ Type_GetSlice(PyTuple_GetSlice, pywrap_steal)
         CAMLreturn(wrap_obj(new_obj));              \
     }
 
+#if PY_MAJOR_VERSION <= 2
+#define Type14a(func, substitute, wrap_obj) Type14(func, wrap_obj)
+#else
+#define Type14a(func, substitute, wrap_obj)             \
+    CAMLprim value func##_wrapper(value obj)            \
+    {                                                   \
+        CAMLparam1(obj);                                \
+                                                        \
+        PyObject *new_obj = substitute(pyunwrap(obj));  \
+        CAMLreturn(wrap_obj(new_obj));                  \
+    }
+#endif    
+
 Type14(PyMethod_Function, pywrap)
 Type14(PyMethod_Self, pywrap)
-Type14(PyMethod_Class, pywrap)
 Type14(PyModule_GetDict, pywrap)
+
+#if PY_MAJOR_VERSION <= 2
+Type14(PyMethod_Class, pywrap)
+#endif
 
 Type14(PyUnicode_AsUTF8String, pywrap_steal)
 Type14(PyObject_Repr, pywrap_steal)
@@ -501,20 +725,21 @@ Type14(PyImport_ReloadModule, pywrap_steal)
 Type14(PyImport_Import, pywrap_steal)
 Type14(PyObject_Str, pywrap_steal)
 Type14(PyObject_Type, pywrap_steal)
-Type14(PyObject_Unicode, pywrap_steal)
 Type14(PyDict_Keys, pywrap_steal)
 Type14(PyDict_Values, pywrap_steal)
 Type14(PyDict_Items, pywrap_steal)
 Type14(PyDict_Copy, pywrap_steal)
 Type14(PySequence_Tuple, pywrap_steal)
 Type14(PySequence_List, pywrap_steal)
-Type14(PyNumber_Int, pywrap_steal)
 Type14(PyNumber_Long, pywrap_steal)
 Type14(PyNumber_Float, pywrap_steal)
 Type14(PyNumber_Negative, pywrap_steal)
 Type14(PyNumber_Positive, pywrap_steal)
 Type14(PyNumber_Absolute, pywrap_steal)
 Type14(PyNumber_Invert, pywrap_steal)
+
+Type14a(PyObject_Unicode, PyObject_Str, pywrap_steal)
+Type14a(PyNumber_Int, PyNumber_Long, pywrap_steal)
 
 /*-----------------------------------------------------------------------*/
 
@@ -565,9 +790,13 @@ Type17(PyDict_GetItem, pywrap)
 
 Type17(PyEval_CallObject, pywrap_steal)
 
+#if PY_MAJOR_VERSION <= 2
 Type17(PyBytes_Format, pywrap_steal)
+#endif
 
+#if PY_MAJOR_VERSION <= 2
 Type17(PyInstance_NewRaw, pywrap_steal)
+#endif
 
 Type17(PySequence_Concat, pywrap_steal)
 Type17(PySequence_InPlaceConcat, pywrap_steal)
@@ -578,9 +807,14 @@ Type17(PyObject_GetItem, pywrap_steal)
 Type17(PyNumber_Add, pywrap_steal)
 Type17(PyNumber_Subtract, pywrap_steal)
 Type17(PyNumber_Multiply, pywrap_steal)
-Type17(PyNumber_Divide, pywrap_steal)
 Type17(PyNumber_Remainder, pywrap_steal)
 Type17(PyNumber_Divmod, pywrap_steal)
+Type17(PyNumber_TrueDivide, pywrap_steal)
+Type17(PyNumber_FloorDivide, pywrap_steal)
+
+#if PY_MAJOR_VERSION <= 2
+Type17(PyNumber_Divide, pywrap_steal)
+#endif
 
 Type17(PyNumber_Lshift, pywrap_steal)
 Type17(PyNumber_Rshift, pywrap_steal)
@@ -591,13 +825,18 @@ Type17(PyNumber_Or, pywrap_steal)
 Type17(PyNumber_InPlaceAdd, pywrap_steal)
 Type17(PyNumber_InPlaceSubtract, pywrap_steal)
 Type17(PyNumber_InPlaceMultiply, pywrap_steal)
-Type17(PyNumber_InPlaceDivide, pywrap_steal)
+Type17(PyNumber_InPlaceTrueDivide, pywrap_steal)
+Type17(PyNumber_InPlaceFloorDivide, pywrap_steal)
 Type17(PyNumber_InPlaceRemainder, pywrap_steal)
 Type17(PyNumber_InPlaceLshift, pywrap_steal)
 Type17(PyNumber_InPlaceRshift, pywrap_steal)
 Type17(PyNumber_InPlaceAnd, pywrap_steal)
 Type17(PyNumber_InPlaceXor, pywrap_steal)
 Type17(PyNumber_InPlaceOr, pywrap_steal)
+
+#if PY_MAJOR_VERSION <= 2
+Type17(PyNumber_InPlaceDivide, pywrap_steal)
+#endif
 
 /*-----------------------------------------------------------------------*/
     
@@ -638,7 +877,6 @@ Type18(PyMapping_Length)
         CAMLreturn(Val_int(result));                            \
     }
 
-Type19(PyObject_Compare)
 Type19(PyObject_HasAttr)
 Type19(PyObject_DelItem)
 Type19(PyDict_DelItem)
@@ -648,6 +886,10 @@ Type19(PySequence_Contains)
 Type19(PySequence_In)
 Type19(PySequence_Index)
 Type19(PyMapping_HasKey)
+
+#if PY_MAJOR_VERSION <= 2
+Type19(PyObject_Compare)
+#endif
 
 /*-----------------------------------------------------------------------*/
 
@@ -731,9 +973,20 @@ Type24(PyDict_SetItem)
           CAMLreturn(copy_int64(func(pyunwrap(obj))));      \
       }
 
-Type25(PyObject_Hash)
-Type25(PyInt_AsLong)
+#if PY_MAJOR_VERSION <= 2
+#define Type25a(func, substitute) Type25(func)
+#else
+#define Type25a(func, substitute)                               \
+    CAMLprim value func##_wrapper(value obj)                    \
+    {                                                           \
+        CAMLparam1(obj);                                        \
+        CAMLreturn(copy_int64(substitute(pyunwrap(obj))));      \
+    }
+#endif
 
+Type25(PyObject_Hash)
+Type25a(PyInt_AsLong, PyLong_AsLong)
+ 
 /*-----------------------------------------------------------------------*/
 
 #define Type26(func, byte_type)                             \
@@ -751,8 +1004,8 @@ Type25(PyInt_AsLong)
     }
 
 Type26(PyBytes_AsString, char)
-Type26(PyModule_GetName, char)
-Type26(PyModule_GetFilename, char)
+Type26(PyModule_GetName, const char)
+Type26(PyModule_GetFilename, const char)
 
 /*-----------------------------------------------------------------------*/
 
@@ -763,7 +1016,7 @@ Type26(PyModule_GetFilename, char)
                                                                     \
         PyObject *result = func(String_val(obj));                   \
         CAMLreturn(wrap_obj(result));                               \
-        }
+    }
 
 Type28(PyImport_AddModule, pywrap)
 
@@ -823,7 +1076,24 @@ Type30(PyErr_SetNone)
         CAMLreturn(wrap_obj(new_obj));                                  \
     }
 
-Type34(PyInt_FromLong, pywrap_steal)
+#if PY_MAJOR_VERSION <= 2
+
+#define Type34a(func, substitute, wrap_obj) Type34(func, wrap_obj)
+
+#else
+
+#define Type34a(func, substitute, wrap_obj)                             \
+    CAMLprim value func##_wrapper(value obj)                            \
+    {                                                                   \
+        CAMLparam1(obj);                                                \
+                                                                        \
+        PyObject *new_obj = substitute(Int64_val(obj));                 \
+        CAMLreturn(wrap_obj(new_obj));                                  \
+    }
+
+#endif
+
+Type34a(PyInt_FromLong, PyLong_FromLong, pywrap_steal)
 
 /*-----------------------------------------------------------------------*/
         
@@ -834,7 +1104,10 @@ Type34(PyInt_FromLong, pywrap_steal)
         CAMLreturn(copy_int64(func()));                                 \
     }
 
+#if PY_MAJOR_VERSION <= 2
 Type35(PyInt_GetMax)
+#endif
+
 Type35(PyImport_GetMagicNumber)
 
 /*-----------------------------------------------------------------------*/
@@ -943,13 +1216,31 @@ Type41(PyTuple_SetItem, 1)
         CAMLreturn(wrap_obj(new_obj));                          \
     }
 
+#if PY_MAJOR_VERSION <= 2
+#define Type42a Type42
+#else
+#define Type42a(func, wrap_obj)                                 \
+    CAMLprim value func##_wrapper(value py_args)                \
+    {                                                           \
+        CAMLparam1(py_args);                                    \
+                                                                \
+        PyObject *new_obj = func(pyunwrap(Field(py_args, 0)),   \
+                                 pyunwrap(Field(py_args, 1)));  \
+        CAMLreturn(wrap_obj(new_obj));                          \
+    }
+#endif
+
 Type42(PySlice_New, pywrap_steal)
-Type42(PyClass_New, pywrap_steal)
-Type42(PyInstance_New, pywrap_steal)
-Type42(PyMethod_New, pywrap_steal)
 Type42(PyEval_CallObjectWithKeywords, pywrap_steal)
 Type42(PyNumber_Power, pywrap_steal)
 Type42(PyNumber_InPlacePower, pywrap_steal)
+
+#if PY_MAJOR_VERSION <= 2
+Type42(PyClass_New, pywrap_steal)
+Type42(PyInstance_New, pywrap_steal)
+#endif
+
+Type42a(PyMethod_New, pywrap_steal)
 
 /*-----------------------------------------------------------------------*/
 
@@ -1174,86 +1465,99 @@ value pycaml_seterror(value ml_err,value ml_str)
   nr_err=Int_val(ml_err);
 
   switch(nr_err) {
-  case 0:
-    err=PyExc_Exception;
-    break;
-  case 1:
-    err=PyExc_StandardError;
-    break;
-  case 2:
-    err=PyExc_ArithmeticError;
-    break;
-  case 3:
-    err=PyExc_LookupError;
-    break;
-  case 4:
-    err=PyExc_AssertionError;
-    break;
-  case 5:
-    err=PyExc_AttributeError;
-    break;
-  case 6:
-    err=PyExc_EOFError;
-    break;
-  case 7:
-    err=PyExc_EnvironmentError;
-    break;
-  case 8:
-    err=PyExc_FloatingPointError;
-    break;
-  case 9:
-    err=PyExc_IOError;
-    break;
-  case 10:
-    err=PyExc_ImportError;
-    break;
-  case 11:
-    err=PyExc_IndexError;
-    break;
-  case 12:
-    err=PyExc_KeyError;
-    break;
-  case 13:
-    err=PyExc_KeyboardInterrupt;
-    break;
-  case 14:
-    err=PyExc_MemoryError;
-    break;
-  case 15:
-    err=PyExc_NameError;
-    break;
-  case 16:
-    err=PyExc_NotImplementedError;
-    break;
-  case 17:
-    err=PyExc_OSError;
-    break;
-  case 18:
-    err=PyExc_OverflowError;
-    break;
-  case 19:
-    err=PyExc_ReferenceError;
-    break;
-  case 20:
-    err=PyExc_RuntimeError;
-    break;
-  case 21:
-    err=PyExc_SyntaxError;
-    break;
-  case 22:
-    err=PyExc_SystemExit;
-    break;
-  case 23:
-    err=PyExc_TypeError;
-    break;
-  case 24:
-    err=PyExc_ValueError;
-    break;
-  case 25:
-    err=PyExc_ZeroDivisionError;
-    break;
-  default:
-    err=PyExc_StandardError;
+      case 0:
+          err=PyExc_Exception;
+          break;
+      case 1:
+#if PY_MAJOR_VERSION <= 2
+          err=PyExc_StandardError;
+          break;
+#else
+          /* PyExc_StandardError is obsolete. Maybe it would be better
+           * to raise an OCaml exception. */
+          err=PyExc_Exception;
+          break;
+#endif
+      case 2:
+          err=PyExc_ArithmeticError;
+          break;
+      case 3:
+          err=PyExc_LookupError;
+          break;
+      case 4:
+          err=PyExc_AssertionError;
+          break;
+      case 5:
+          err=PyExc_AttributeError;
+          break;
+      case 6:
+          err=PyExc_EOFError;
+          break;
+      case 7:
+          err=PyExc_EnvironmentError;
+          break;
+      case 8:
+          err=PyExc_FloatingPointError;
+          break;
+      case 9:
+          err=PyExc_IOError;
+          break;
+      case 10:
+          err=PyExc_ImportError;
+          break;
+      case 11:
+          err=PyExc_IndexError;
+          break;
+      case 12:
+          err=PyExc_KeyError;
+          break;
+      case 13:
+          err=PyExc_KeyboardInterrupt;
+          break;
+      case 14:
+          err=PyExc_MemoryError;
+          break;
+      case 15:
+          err=PyExc_NameError;
+          break;
+      case 16:
+          err=PyExc_NotImplementedError;
+          break;
+      case 17:
+          err=PyExc_OSError;
+          break;
+      case 18:
+          err=PyExc_OverflowError;
+          break;
+      case 19:
+          err=PyExc_ReferenceError;
+          break;
+      case 20:
+          err=PyExc_RuntimeError;
+          break;
+      case 21:
+          err=PyExc_SyntaxError;
+          break;
+      case 22:
+          err=PyExc_SystemExit;
+          break;
+      case 23:
+          err=PyExc_TypeError;
+          break;
+      case 24:
+          err=PyExc_ValueError;
+          break;
+      case 25:
+          err=PyExc_ZeroDivisionError;
+          break;
+      default:
+          /* Maybe it would be better here to raise an OCaml
+           * exception. */
+#if PY_MAJOR_VERSION <= 2
+          err=PyExc_StandardError;
+#else
+          err=PyExc_Exception;
+#endif
   }
 
   PyErr_SetString(err,String_val(ml_str));
@@ -1363,13 +1667,19 @@ value pytype( value obj ) {
     else if( PyBytes_Check( pobj ) ) CAMLreturn(Val_int(StringType));
     else if( PyUnicode_Check( pobj ) ) CAMLreturn(Val_int(UnicodeType));
     else if( PyBool_Check( pobj ) ) CAMLreturn(Val_int(BoolType));
+#if PY_MAJOR_VERSION <= 2
     else if( PyInt_Check( pobj ) ) CAMLreturn(Val_int(IntType));
+#else
+    else if( PyLong_Check( pobj ) ) CAMLreturn(Val_int(IntType));
+#endif
     else if( PyFloat_Check( pobj ) ) CAMLreturn(Val_int(FloatType));
     else if( PyList_Check( pobj ) ) CAMLreturn(Val_int(ListType));
     else if( pobj == Py_None ) CAMLreturn(Val_int(NoneType));
     else if( PyCallable_Check( pobj ) ) CAMLreturn(Val_int(CallableType));
     else if( PyModule_Check( pobj ) ) CAMLreturn(Val_int(ModuleType));
+#if PY_MAJOR_VERSION <= 2
     else if( PyClass_Check( pobj ) ) CAMLreturn(Val_int(ClassType));
+#endif
     else if( PyType_Check( pobj ) ) CAMLreturn(Val_int(TypeType));
     else if( PyDict_Check( pobj ) ) CAMLreturn(Val_int(DictType));
     else if( PyCObject_Check( pobj ) )
