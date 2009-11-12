@@ -16,12 +16,15 @@ OCAMLDEP = ocamldep ${OCAMLFLAGS}
 INCDIRS=$(PYTHON_INCLUDE_PATH)
 LIBDIRS=$(PYTHON_LIBRARY_PATH)
 
-all: pycaml_stubs.h native-code-library byte-code-library
+all: pycaml_stubs.h native-code-library byte-code-library META
+
+META: META.in
+	sed -e "s/@PYVER_PACK@/${PYVER_PACK}/g" < META.in > META
 
 mrproper: clean
 	rm -rf *~ *.cmi *.cmo *.a *.cma *.cmxa doc *.so deps
 
-deps: META pycaml.ml pycaml.mli pycaml_stubs.c pycaml_stubs.h
+deps: META.in pycaml.ml pycaml.mli pycaml_stubs.c pycaml_stubs.h
 	touch deps
 
 .PHONY: mrproper
