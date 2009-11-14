@@ -164,7 +164,13 @@ static int pycompare(value v1, value v2)
 {
     int result;
 
-    if (1 == PyObject_RichCompareBool((PyObject *) getcustom(v1),
+    if (getcustom(v1) && !getcustom(v2))
+        result = -1;
+    else if (getcustom(v2) && !getcustom(v1))
+        result = 1;
+    else if (!getcustom(v1) && !getcustom(v2))
+        result = 0;
+    else if (1 == PyObject_RichCompareBool((PyObject *) getcustom(v1),
                                       (PyObject *) getcustom(v2), Py_EQ))
         result = 0;
     else if (1 == PyObject_RichCompareBool((PyObject *) getcustom(v1),
@@ -174,7 +180,7 @@ static int pycompare(value v1, value v2)
                                            (PyObject *) getcustom(v2), Py_GT))
         result = 1;
     else
-        caml_failwith("PyObject_RichCompareBool error");
+        result = -1;        /* Is there a better value to put here? */
 
     return result;
 }
@@ -737,6 +743,7 @@ Type14(PyNumber_Negative, pywrap_steal)
 Type14(PyNumber_Positive, pywrap_steal)
 Type14(PyNumber_Absolute, pywrap_steal)
 Type14(PyNumber_Invert, pywrap_steal)
+Type14(PyIter_Next, pywrap_steal)
 
 Type14a(PyObject_Unicode, PyObject_Str, pywrap_steal)
 Type14a(PyNumber_Int, PyNumber_Long, pywrap_steal)
@@ -864,6 +871,7 @@ Type18(PySequence_Length)
 Type18(PyMapping_Check)
 Type18(PyMapping_Size)
 Type18(PyMapping_Length)
+Type18(PyIter_Check)
 
 /*-----------------------------------------------------------------------*/
 

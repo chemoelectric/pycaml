@@ -788,6 +788,9 @@ val pymapping_haskey : pyobject * pyobject -> int
 val pymapping_getitemstring : pyobject * string -> pyobject 
 val pymapping_setitemstring : pyobject * string * pyobject -> int
 
+val pyiter_check : pyobject -> int
+val pyiter_next : pyobject -> pyobject
+
 val pynull : unit -> pyobject
 val pynone : unit -> pyobject
 

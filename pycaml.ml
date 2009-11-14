@@ -193,6 +193,7 @@ external pynumber_negative : pyobject -> pyobject = "PyNumber_Negative_wrapper"
 external pynumber_positive : pyobject -> pyobject = "PyNumber_Positive_wrapper"
 external pynumber_absolute : pyobject -> pyobject = "PyNumber_Absolute_wrapper"
 external pynumber_invert : pyobject -> pyobject = "PyNumber_Invert_wrapper"
+external pyiter_next : pyobject -> pyobject = "PyIter_Next_wrapper"
 
 (* Type15 *)
 external pyobject_richcompare : (pyobject * pyobject * int) -> pyobject = "PyObject_RichCompare_wrapper"
@@ -262,6 +263,7 @@ external pysequence_length : pyobject -> int = "PySequence_Length_wrapper"
 external pymapping_check : pyobject -> int = "PyMapping_Check_wrapper"
 external pymapping_size : pyobject -> int = "PyMapping_Size_wrapper"
 external pymapping_length : pyobject -> int = "PyMapping_Length_wrapper"
+external pyiter_check : pyobject -> int = "PyIter_Check_wrapper"
 
 (* Type19 *)
 external pyobject_hasattr : (pyobject * pyobject) -> int = "PyObject_HasAttr_wrapper"
