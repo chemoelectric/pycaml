@@ -44,6 +44,11 @@
 
 #if 3 <= PY_MAJOR_VERSION
 #include <wchar.h>
+#if 4 <= PY_MAJOR_VERSION || (PY_MAJOR_VERSION == 3 && 1 <= PY_MINOR_VERSION)
+#define USE_PYCAPSULE 1
+#else
+#define USE_PYCAPSULE 0
+#endif
 #endif
 
 
@@ -244,27 +249,55 @@ static value pywrap_steal( PyObject *obj )
     CAMLreturn(v);
 }
 
-static PyObject *pyunwrap( value v )
+static PyObject *
+pyunwrap( value v )
 {
     return *((PyObject **)Data_custom_val(v));
 }
 
-static void camldestr( void *v )
+#if USE_PYCAPSULE
+
+static void
+caml_destructor(PyObject *v, const char *capsule_name)
 {
-    value *valptr = (value *)v;
-    /* printf("DDD camlwrap remove_global_root(0x%08x)\n",valptr);fflush(stdout); */
-    remove_global_root(valptr);
-    free( v );
+    value *valptr = (value *) PyCapsule_GetPointer(v, capsule_name);
+    caml_remove_global_root(valptr);
+    free(valptr);
 }
 
-static void camldestr_pill( void *v, void *unused_dummy_receiving_ocamlpill_token )
+static void
+camldestr(PyObject *v)
 {
-    value *valptr = (value *)v;
-    /* printf("DDD camlwrap remove_global_root(0x%08x)\n",valptr);fflush(stdout); */
-    remove_global_root(valptr);
-    free( v );
+    caml_destructor(v, "caml-other");
 }
 
+static void
+camldestr_pill(PyObject *v)
+{
+    caml_destructor(v, "caml-pill");
+}
+
+#else /* USE_PYCAPSULE */
+
+static void
+camldestr(void *v)
+{
+    value *valptr = (value *) v;
+    /* printf("DDD camlwrap remove_global_root(0x%08x)\n",valptr);fflush(stdout); */
+    caml_remove_global_root(valptr);
+    free(v);
+}
+
+static void
+camldestr_pill(void *v, void *unused_dummy_receiving_ocamlpill_token)
+{
+    value *valptr = (value *) v;
+    /* printf("DDD camlwrap remove_global_root(0x%08x)\n",valptr);fflush(stdout); */
+    caml_remove_global_root(valptr);
+    free(v);
+}
+
+#endif /* USE_PYCAPSULE */
 
 /* T.F. Extension: the pill token is a subtle hack:
 
@@ -286,33 +319,53 @@ static void camldestr_pill( void *v, void *unused_dummy_receiving_ocamlpill_toke
    (which can be queried independently, and actually is not used by our
    destructor) as a token designating OCaml pills.
 
- */
-static const char* ocamlpill_token="CAML";
+   Barry Schwartz: PyCapsule has a name field that can be used for
+   identification, in place of the PyCObject hack described above.
 
-static PyObject *camlwrap( value val, void *aux_str, int size )
+*/
+#if !USE_PYCAPSULE
+static const char *ocamlpill_token = "CAML";
+#endif
+
+static PyObject *
+camlwrap(value val, void *aux_str, int size)
 {
     value *v = (value *) xmalloc(sizeof(value) + size);
     *v = val;
-    memcpy((void *)v+sizeof(value),aux_str,size);
-    register_global_root(v);
-    /* printf("DDD camlwrap register_global_root(0x%08x)\n",v);fflush(stdout); */
-    return PyCObject_FromVoidPtr(v,camldestr);
+    memcpy((void *)v + sizeof(value), aux_str, size);
+    caml_register_global_root(v);
+    /* printf("DDD camlwrap caml_register_global_root(0x%08x)\n",v);fflush(stdout); */
+#if USE_PYCAPSULE
+    return PyCapsule_New(v, "caml-other", camldestr);
+#else
+    return PyCObject_FromVoidPtr(v, camldestr);
+#endif
 }
 
-static PyObject *camlwrap_pill( value val, void *aux_str, int size )
+static PyObject *
+camlwrap_pill(value val, void *aux_str, int size)
 {
     value *v = (value *) xmalloc(sizeof(value) + size);
     *v = val;
-    memcpy((void *)v+sizeof(value),aux_str,size);
-    register_global_root(v);
-    return PyCObject_FromVoidPtrAndDesc(v,(void*)ocamlpill_token,camldestr_pill);
+    memcpy((void *)v + sizeof(value), aux_str, size);
+    caml_register_global_root(v);
+#if USE_PYCAPSULE
+    return PyCapsule_New(v, "caml-pill", camldestr_pill);
+#else
+    return PyCObject_FromVoidPtrAndDesc(v, (void*)ocamlpill_token, camldestr_pill);
+#endif
 }
 
 
-static void *caml_aux( PyObject *obj )
+static void *
+caml_aux(PyObject *obj)
 {
-    value *v = (value *)PyCObject_AsVoidPtr( obj );
-    return (void *)v+sizeof(value);
+#if USE_PYCAPSULE
+    value *v = (value *) PyCapsule_GetPointer(obj, "caml-other");
+#else
+    value *v = (value *) PyCObject_AsVoidPtr(obj);
+#endif
+    return (void *) v + sizeof(value);
 }
 
 /*
@@ -337,19 +390,30 @@ PyObject *pycall_callback_buggy( PyObject *obj, PyObject *args ) {
 
 PyObject *pycall_callback( PyObject *obj, PyObject *args )
 {
-  CAMLparam0();
-  CAMLlocal3(ml_out,ml_func,ml_args);
-  PyObject *out;
+    CAMLparam0();
+    CAMLlocal3(ml_out, ml_func, ml_args);
+    PyObject *out;
 
-    if( !PyCObject_Check(obj) ) {
-	Py_INCREF(Py_None);
-	return Py_None;
-    }
+#if USE_PYCAPSULE
+    void *p = PyCapsule_GetPointer(obj, "caml-other");
+    if (p == NULL)
+        {
+          Py_INCREF(Py_None);
+          return Py_None;
+        }
+    ml_func = * (value *) p;
+#else
+    if (!PyCObject_Check(obj))
+        {
+          Py_INCREF(Py_None);
+          return Py_None;
+        }
 
-    ml_func = *(value *)PyCObject_AsVoidPtr( obj );
-    ml_args=pywrap(args);
-    ml_out = callback(ml_func,ml_args);
-    out=pyunwrap(ml_out);
+    ml_func = * (value *) PyCObject_AsVoidPtr(obj);
+#endif
+    ml_args = pywrap(args);
+    ml_out = callback(ml_func, ml_args);
+    out = pyunwrap(ml_out);
     /* T.F.:
        The result which we have now is borrowed - most probably, 
        there is only one reference to it which says
@@ -357,7 +421,7 @@ PyObject *pycall_callback( PyObject *obj, PyObject *args )
        We have to properly transfer ownership, and hence
        see that we own that reference:
     */
-    if(out)Py_INCREF(out);	/* NOTE: may be 0! */
+    Py_XINCREF(out);
     CAMLreturnT(PyObject *, out);
 }
 
@@ -1572,10 +1636,17 @@ value pycaml_seterror(value ml_err,value ml_str)
   CAMLreturn(Val_unit);
 }
 
-value pyunwrapvalue( value cb ) {
+value pyunwrapvalue(value cb)
+{
     CAMLparam1(cb);
     value *v;
-    v = (value *)PyCObject_AsVoidPtr( pyunwrap(cb) );
+#if USE_PYCAPSULE
+    v = (value *) PyCapsule_GetPointer(pyunwrap(cb), "caml-pill");
+    if (v == NULL)
+        v = (value *) PyCapsule_GetPointer(pyunwrap(cb), "caml-other");
+#else
+    v = (value *) PyCObject_AsVoidPtr(pyunwrap(cb));
+#endif
     CAMLreturn(*v);
 }
 
@@ -1690,19 +1761,21 @@ value pytype( value obj ) {
 #endif
     else if( PyType_Check( pobj ) ) CAMLreturn(Val_int(TypeType));
     else if( PyDict_Check( pobj ) ) CAMLreturn(Val_int(DictType));
-    else if( PyCObject_Check( pobj ) )
+#if USE_PYCAPSULE
+    else if (PyCapsule_IsValid(pobj, "caml-pill"))
+        CAMLreturn(Val_int(CamlpillType));
+#else /* USE_PYCAPSULE */
+    else if (PyCObject_Check(pobj))
       {
-	void *desc=PyCObject_GetDesc(pobj);
-	if(desc==(void *)ocamlpill_token)
-	  {
-	    CAMLreturn(Val_int(CamlpillType));
-	  }
-	else
-	  {
-	    CAMLreturn(Val_int(OtherType));
-	  }
+          void *desc = PyCObject_GetDesc(pobj);
+          if (desc == (void *) ocamlpill_token)
+                  CAMLreturn(Val_int(CamlpillType));
+          else
+                  CAMLreturn(Val_int(OtherType));
       }
-    else CAMLreturn(Val_int(OtherType));
+#endif /* USE_PYCAPSULE */
+    else
+        CAMLreturn(Val_int(OtherType));
 }
 
 value pytuple_fromarray( value array ) {
@@ -1739,11 +1812,11 @@ value pytuple_toarray( value array ) {
     int i;
     CAMLlocal1(rv);
 
-    rv = caml_alloc_tuple( PySequence_Size(obj) );
+    rv = caml_alloc_tuple(PySequence_Size(obj));
     /* XXX T.F.: actually, using caml_alloc_tuple to get an array is not overly aesthetic... */
 
-    for( i = 0; i < PySequence_Size(obj); i++ )
-	Store_field(rv,i,pywrap_steal(PySequence_GetItem(obj,i)));
+    for (i = 0; i < PySequence_Size(obj); i++)
+	Store_field(rv, i, pywrap_steal(PySequence_GetItem(obj, i)));
 
     CAMLreturn(rv);
 }
@@ -1757,9 +1830,9 @@ value pywrap_closure( value closure ) {
     ml.ml_meth = pycall_callback;
     ml.ml_flags = 1;
     ml.ml_doc = "Anonymous closure";
-    obj = camlwrap(closure,&ml,sizeof(ml));
-    ml_def = (PyMethodDef *)caml_aux(obj);
-    CAMLreturn(pywrap_steal(PyCFunction_New(ml_def,obj)));
+    obj = camlwrap(closure, &ml, sizeof(ml));
+    ml_def = (PyMethodDef *) caml_aux(obj);
+    CAMLreturn(pywrap_steal(PyCFunction_New(ml_def, obj)));
 }
 
 /*
@@ -1861,7 +1934,7 @@ value pywrap_closure_docstring(value docstring, value closure) {
   ml.ml_flags = 1;
   ml.ml_doc = String_val(docstring);
   obj = camlwrap(closure,&ml,sizeof(ml));
-  ml_def = (PyMethodDef *)caml_aux(obj);
+  ml_def = (PyMethodDef *) caml_aux(obj);
   CAMLreturn(pywrap_steal(PyCFunction_New(ml_def,obj)));
 }
 
