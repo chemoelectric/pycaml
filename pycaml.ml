@@ -37,7 +37,7 @@ type pymodule_func = {
 
 type pyobject_type =
   | TupleType
-  | StringType
+  | BytesType
   | UnicodeType
   | BoolType
   | IntType
@@ -540,7 +540,7 @@ let py_profile_report () =
 let pytype_name pt =
   match pt with
   | TupleType -> "Python-Tuple"
-  | StringType -> "Python-String"
+  | BytesType -> "Python-Bytes"
   | UnicodeType -> "Python-Unicode"
   | BoolType -> "Python-Bool"
   | IntType -> "Python-Int"
@@ -770,7 +770,7 @@ let py_number_list_as_float_array ?error_label ?length arr =
 let py_string_list_as_array ?error_label ?length arr =
   py_homogeneous_list_as_array
     ?error_label ?length
-    "string" (fun x -> pytype x = StringType) pybytes_asstring arr
+    "string" (fun x -> pytype x = BytesType) pybytes_asstring arr
 ;;
 
 let py_list_list_as_array ?error_label ?length arr =
@@ -1193,7 +1193,7 @@ let guarded_pynumber_asfloat x =
 
 
 let guarded_pybytes_asstring x =
-  if pytype x <> StringType
+  if pytype x <> BytesType
   then raise
     (Pycaml_exn(Pyerr_TypeError,
 		Printf.sprintf "Wanted: string, got: %s (%s)" (pytype_name (pytype x)) (py_repr x)))
@@ -1246,7 +1246,7 @@ ocaml.sys_profiling(\"report\") -> return profiling report
 Report format: list of (name,time,nr_calls), sorted by decreasing total time. 
 nr_calls is a floatingpoint number to overcome 32-bit integer limitations.
 "
-    [|StringType|]
+    [|BytesType|]
     (fun arr ->
        let s = pybytes_asstring arr.(0) in
 	 match s with

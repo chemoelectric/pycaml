@@ -81,7 +81,7 @@ val py_deactivate_profiling: unit -> bool
 
 type pyobject_type =
   | TupleType
-  | StringType
+  | BytesType
   | UnicodeType
   | BoolType
   | IntType

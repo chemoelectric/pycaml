@@ -1721,7 +1721,7 @@ PyObject* PyImport_ImportModuleEx_(char *name, PyObject *globals, PyObject *loca
 
 enum PycamlTypeLabels { 
     TupleType = 0,
-    StringType,
+    BytesType,
     UnicodeType,
     BoolType,
     IntType,
@@ -1743,7 +1743,7 @@ value pytype( value obj ) {
     PyObject *pobj = pyunwrap( obj );
     if( !pobj ) CAMLreturn(NullType);
     else if( PyTuple_Check( pobj ) ) CAMLreturn(Val_int(TupleType));
-    else if( PyBytes_Check( pobj ) ) CAMLreturn(Val_int(StringType));
+    else if( PyBytes_Check( pobj ) ) CAMLreturn(Val_int(BytesType));
     else if( PyUnicode_Check( pobj ) ) CAMLreturn(Val_int(UnicodeType));
     else if( PyBool_Check( pobj ) ) CAMLreturn(Val_int(BoolType));
 #if PY_MAJOR_VERSION <= 2
