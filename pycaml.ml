@@ -20,8 +20,13 @@
  * 
  * NOTE: have to properly document the CamlType / ocamlpill mechanism!
    
- Note: Should we incorporate auto-conversion of int to float?
- At present, we do not do this.
+ * More modifications are by Barry Schwartz.
+ * Copyright (C) 2009 Barry Schwartz.
+
+ * Note (T.F.): Should we incorporate auto-conversion of int to float?
+ * At present, we do not do this. (B.S.): Maybe we should, or maybe we
+ * shouldn't. But BytesType/UnicodeType/string conversion does seem
+ * called for; it's getting to be a big problem in kompostilo.
  *)
 
 type funcptr 
@@ -52,6 +57,7 @@ type pyobject_type =
   | NullType
   | CamlpillType
   | OtherType
+  | EitherStringType (* Signifies that either of BytesType or UnicodeType is allowed. *)
 
 type pyerror_type =
   | Pyerr_Exception
@@ -80,9 +86,8 @@ type pyerror_type =
   | Pyerr_TypeError
   | Pyerr_ValueError
   | Pyerr_ZeroDivisionError
-;;
 
-exception Pycaml_exn of (pyerror_type * string);;
+exception Pycaml_exn of (pyerror_type * string)
 
       
 (* Function list *)
@@ -441,15 +446,15 @@ external pytuple_toarray : pyobject -> pyobject array = "pytuple_toarray"
     
 external pywrap_closure : (pyobject -> pyobject) -> pyobject = "pywrap_closure"
 
-external pywrap_value : 'a -> pyobject = "pywrapvalue" ;;
-external pywrap_value_pill : 'a -> pyobject = "pywrapvalue_pill" ;;
+external pywrap_value : 'a -> pyobject = "pywrapvalue"
+external pywrap_value_pill : 'a -> pyobject = "pywrapvalue_pill"
 
-external pyunwrap_value : pyobject -> 'a = "pyunwrapvalue" ;;
+external pyunwrap_value : pyobject -> 'a = "pyunwrapvalue"
 (* ^ Note: this will just unwrap and not care about pills! *)
 
 (* -- T.F. extensions -- *)
 
-let py_repr x = pybytes_asstring (pyobject_repr x);;
+let py_repr x = pybytes_asstring (pyobject_repr x)
 
 external pywrap_closure_docstring :
   string -> (pyobject -> pyobject) -> pyobject = "pywrap_closure_docstring"
@@ -464,24 +469,22 @@ external python_prompt: unit -> unit = "pycaml_prompt"
 
 external pyrefcount: pyobject -> int = "pyrefcount"
 
-let _py_profile_hash = ((Hashtbl.create 100):(string, float array) Hashtbl.t);; 
-let _py_profiling_active=ref false;;
+let _py_profile_hash = ((Hashtbl.create 100):(string, float array) Hashtbl.t)
+let _py_profiling_active=ref false
 (* The profiling hash and switch are strictly internal! *)
 
 let py_activate_profiling () =
   let z = !_py_profiling_active in
   let () = _py_profiling_active:=true in
     z
-;;
 
 let py_deactivate_profiling () =
   let z = !_py_profiling_active in
   let () = _py_profiling_active:=false in
     z
-;;
 
 
-let py_profile_reset () = Hashtbl.clear _py_profile_hash;;
+let py_profile_reset () = Hashtbl.clear _py_profile_hash
 
 (* Needed below. Actually, we also have this in our "snippets" module,
    but pycaml should not depend on anything not in the standard ocaml
@@ -501,7 +504,8 @@ let __hashtbl_arbitrary_element ht =
 	ht
     with
       | Not_found -> ()
-  in !have_it;;
+  in
+    !have_it
 
 let __map_hashtbl_to_array ?sorter mapper ht =
   let nr_entries = Hashtbl.length ht in
@@ -526,7 +530,6 @@ let __map_hashtbl_to_array ?sorter mapper ht =
 	  | Some s ->
 	      let () = Array.sort s result in result
 	  | _ -> result
-;;
 
 
 let py_profile_report () =
@@ -534,7 +537,6 @@ let py_profile_report () =
     ~sorter:(fun (_,time_a,_) (_,time_b,_) -> compare time_b time_a) (* sort by time consumed *)
     (fun name time_and_calls -> (name,time_and_calls.(0),time_and_calls.(1)))
     _py_profile_hash
-;;
 
 
 let pytype_name pt =
@@ -555,26 +557,22 @@ let pytype_name pt =
   | DictType -> "Python-Dict"
   | CamlpillType -> "Python-Camlpill"
   | OtherType -> "Python-Other"
-;;
+  | EitherStringType -> "Python-EitherString"
 
 let set_python_argv argv =
   let py_mod_sys_dict = pymodule_getdict (pyimport_importmodule "sys") in
   let _ = pydict_setitem(py_mod_sys_dict,pybytes_fromstring "argv",
 			 pylist_fromarray (Array.map pybytes_fromstring argv))
   in ()
-;;
 
 let python_eval str =
   pyrun_simplestring str
-;;
 
 let python_load filename =
   ignore(python_eval (Printf.sprintf "execfile(\"%s\")" filename))
-;;
 
 let python () =
   let () = python_prompt() in 0
-;;
 
 let ipython () =
   pyrun_simplestring
@@ -602,11 +600,11 @@ ipshell() # this call anywhere in your program will start IPython
    These will have names that start with "example_".
 *)
 
-let _ = py_initialize ();; (* Note that this must happen that early... *)
+let _ = py_initialize () (* Note that this must happen that early... *)
 
-let _py_sys_modules = pyimport_getmoduledict ();;
-let _py_mod_ocaml = pymodule_new "ocaml";;
-let _py_mod_ocaml_dict = pymodule_getdict _py_mod_ocaml;;
+let _py_sys_modules = pyimport_getmoduledict ()
+let _py_mod_ocaml = pymodule_new "ocaml"
+let _py_mod_ocaml_dict = pymodule_getdict _py_mod_ocaml
 
 (* Get the last value that was computed in the interactive REPL *)
 let python_last_value () =
@@ -616,9 +614,8 @@ let python_last_value () =
   let builtins_dict = pymodule_getdict builtins in
   let pyname_lastvalue = pybytes_fromstring "_" in
     pydict_getitem (builtins_dict, pyname_lastvalue)
-;;
 
-let py_is_true x = pyobject_istrue x <> 0;; (* pyobject_istrue has return type int - which is quite insane... *)
+let py_is_true x = pyobject_istrue x <> 0 (* pyobject_istrue has return type int - which is quite insane... *)
 
 let register_for_python stuff =
   Array.iter
@@ -626,7 +623,7 @@ let register_for_python stuff =
        ignore(pydict_setitemstring
 		(_py_mod_ocaml_dict,
 		 python_name, value)))
-    stuff;;
+    stuff
 
 let register_pre_functions_for_python stuff =
   Array.iter
@@ -634,16 +631,14 @@ let register_pre_functions_for_python stuff =
        ignore(pydict_setitemstring
 		(_py_mod_ocaml_dict,
 		 python_name, pre_fun python_name)))
-    stuff;;
+    stuff
 
 
 let float_array_to_python farr =
   pylist_fromarray (Array.map pyfloat_fromdouble farr)
-;;
 
 let int_array_to_python iarr =
   pylist_fromarray (Array.map pyint_fromint iarr)
-;;
 
 
 let py_float_tensor ?(init=(fun _ -> 0.0)) index_ranges =
@@ -677,16 +672,15 @@ let py_float_tensor ?(init=(fun _ -> 0.0)) index_ranges =
 	  else walk (pylist_get sub_structure indices.(pos)) (1+pos)
 	in walk structure 0
       in (structure,setter)
-;;
 
 
 
 let py_homogeneous_list_as_array
-   ?error_label
-   ?length
-   type_name type_checker unwrapper
-   py_obj_arr
-   =
+    ?error_label
+    ?length
+    type_name type_checker unwrapper
+    py_obj_arr
+    =
   let array_first_not_to_satisfy p arr =
     let len = Array.length arr in
     let rec walk n =
@@ -700,48 +694,42 @@ let py_homogeneous_list_as_array
       | None -> ""
       | Some x -> Printf.sprintf "%s: " x
   in
-    if (pytype py_obj_arr) <> ListType
-    then 
+    if pytype py_obj_arr <> ListType then 
       raise 
-	(Pycaml_exn
-	   (Pyerr_TypeError,
-	    Printf.sprintf "%sExpected list, got: %s (%s)" the_error_label
-	      (pytype_name (pytype py_obj_arr))
-	      (py_repr py_obj_arr)
-	   ))
+	    (Pycaml_exn
+	       (Pyerr_TypeError,
+	        Printf.sprintf "%sExpected list, got: %s (%s)" the_error_label
+	          (pytype_name (pytype py_obj_arr))
+	          (py_repr py_obj_arr)
+	       ))
     else
       let obj_arr = pylist_toarray py_obj_arr in
-      (* Doing the length check is slightly tricky... *)
+        (* Doing the length check is slightly tricky... *)
       let () =
-	(match length with
-	| None -> ()
-	| Some len ->
-	    if Array.length obj_arr <> len
-	    then
-	      raise 
-		(Pycaml_exn
-		   (Pyerr_TypeError,
-		    Printf.sprintf "%sExpected list of length %d, got length: %d"
-		      the_error_label
-		      len (Array.length obj_arr)))
-	    else ())
+        match length with
+	      | None -> ()
+	      | Some len ->
+	          if Array.length obj_arr <> len then
+	            raise 
+		          (Pycaml_exn
+		             (Pyerr_TypeError,
+		              Printf.sprintf "%sExpected list of length %d, got length: %d"
+		                the_error_label
+		                len (Array.length obj_arr)))
       in
       let first_bad = array_first_not_to_satisfy type_checker obj_arr in
-      if first_bad <> (-1)
-      then
-	raise 
-	  (Pycaml_exn
-	     (Pyerr_TypeError,
-	      Printf.sprintf "%sExpected homogeneous list of %s. Entry %d is of type %s (%s)!"
-		the_error_label
-		type_name
-		(1+first_bad)
-		(pytype_name (pytype obj_arr.(first_bad)))
-		(py_repr obj_arr.(first_bad))
-	     ))
-      else
-	Array.map unwrapper obj_arr
-;;
+        if first_bad <> (-1) then
+	      raise 
+            (Pycaml_exn
+               (Pyerr_TypeError,
+	            Printf.sprintf "%sExpected homogeneous list of %s. Entry %d is of type %s (%s)!"
+		          the_error_label
+		          type_name
+		          (1 + first_bad)
+		          (pytype_name (pytype obj_arr.(first_bad)))
+		          (py_repr obj_arr.(first_bad))))
+        else
+	      Array.map unwrapper obj_arr
 
 
 
@@ -749,13 +737,11 @@ let py_float_list_as_array ?error_label ?length arr =
   py_homogeneous_list_as_array
     ?error_label ?length
     "float" (fun x -> pytype x = FloatType) pyfloat_asdouble arr
-;;
 
 let py_int_list_as_array ?error_label ?length arr =
   py_homogeneous_list_as_array
     ?error_label ?length
     "int" (fun x -> pytype x = IntType) pyint_asint arr
-;;
 
 let py_number_list_as_float_array ?error_label ?length arr =
   py_homogeneous_list_as_array
@@ -764,48 +750,58 @@ let py_number_list_as_float_array ?error_label ?length arr =
     (fun x -> let ty = pytype x in ty = FloatType || ty = IntType)
     (fun x -> if pytype x = FloatType then pyfloat_asdouble x else float_of_int (pyint_asint x))
     arr
-;;
 
 
 let py_string_list_as_array ?error_label ?length arr =
   py_homogeneous_list_as_array
     ?error_label ?length
     "string" (fun x -> pytype x = BytesType) pybytes_asstring arr
-;;
 
 let py_list_list_as_array ?error_label ?length arr =
   py_homogeneous_list_as_array
     ?error_label ?length
     "<Python List>" (fun x -> pytype x = ListType) (fun x -> x) arr
-;;
 
 let py_list_list_as_array2 ?error_label ?length arr =
   py_homogeneous_list_as_array
     ?error_label ?length
     "<Python List>" (fun x -> pytype x = ListType) pylist_toarray arr
-;;
 
 
 let py_float_list_list_as_array ?error_label ?length_outer ?length_inner arr =
   let arr_outer = py_list_list_as_array ?error_label ?length:length_outer arr in
   Array.map (py_float_list_as_array ?error_label ?length:length_inner) arr_outer
-;;
 
 let py_number_list_list_as_float_array ?error_label ?length_outer ?length_inner arr =
   let arr_outer = py_list_list_as_array ?error_label ?length:length_outer arr in
   Array.map (py_number_list_as_float_array ?error_label ?length:length_inner) arr_outer
-;;
 
 
 let py_int_list_list_as_array ?error_label ?length_outer ?length_inner arr =
   let arr_outer = py_list_list_as_array ?error_label ?length:length_outer arr in
   Array.map (py_int_list_as_array ?error_label ?length:length_inner) arr_outer
-;;
 
 let py_string_list_list_as_array ?error_label ?length_outer ?length_inner arr =
   let arr_outer = py_list_list_as_array ?error_label ?length:length_outer arr in
   Array.map (py_string_list_as_array ?error_label ?length:length_inner) arr_outer
-;;
+
+
+(* OCaml string encoded in UTF-8 --> Python 3 string type (= Python 2 unicode type) *)
+let pythonize_string s =
+  pyunicode_decodeutf8(s, None)
+
+(* Python 3 string or bytes type --> OCaml string encoded in UTF-8 *)
+let unpythonize_string s =
+  let t = pytype s in
+    match t with
+      | UnicodeType -> pybytes_asstringandsize (pyunicode_asutf8string s)
+      | BytesType   -> pybytes_asstringandsize s
+      | _ ->
+          raise (Pycaml_exn
+                   (Pyerr_TypeError, 
+			        (Printf.sprintf
+                       "In OCaml code, got Python type %s where bytes or unicode was expected"
+                       (pytype_name t))))
 
 
 (* When registering an OCaml function for Python, we should include
@@ -823,18 +819,21 @@ let py_string_list_list_as_array ?error_label ?length_outer ?length_inner arr =
 (* Actually, this turned out to be not quite as useful as I hoped initially... *)
 let _caml_debug_exceptions () =
   let ocamlrunparam =
-    try Unix.getenv "OCAMLRUNPARAM"
-    with | Not_found ->
-      try Unix.getenv "CAMLRUNPARAM"
-      with | Not_found -> ""
+    try
+      Unix.getenv "OCAMLRUNPARAM"
+    with
+      | Not_found ->
+          try
+            Unix.getenv "CAMLRUNPARAM"
+          with
+            | Not_found -> ""
   in
   let pieces = Str.split (Str.regexp ",") ocamlrunparam in
     try 
       let _ = List.find (fun p -> p="b") pieces in
-	true
+        true
     with
       | Not_found -> false
-;;
 
 let python_interfaced_function
     ?name (* Will be used in both profiling and error reporting *)
@@ -843,138 +842,143 @@ let python_interfaced_function
     ?extra_guards (* An array of functions mapping pyobject -> failure_string option *)
     wanted_types function_body =
   let wrapper =
-    (match doc with
-       | None -> pywrap_closure
-       | Some docstring -> (pywrap_closure_docstring docstring))
+    begin
+      match doc with
+        | None -> pywrap_closure
+        | Some docstring -> (pywrap_closure_docstring docstring)
+    end
   in
-  let exn_name = match name with | None -> "" | Some s -> Printf.sprintf " (%s)" s in
+  let exn_name =
+    match name with
+      | None -> ""
+      | Some s -> Printf.sprintf " (%s)" s
+  in
   let work_fun python_args =
     let body () =
-            let () = (if pytype python_args = TupleType
-		then ()
-		else raise (Pycaml_exn(Pyerr_TypeError, Printf.sprintf "Weird situation: Non-Tuple function args encountered.%s" exn_name))
-		    (* ^ This should never happen! *)
-	       )
+      let () =
+        if pytype python_args <> TupleType then
+		  (* ^ This should never happen! *)
+          raise (Pycaml_exn(Pyerr_TypeError, Printf.sprintf "Weird situation: Non-Tuple function args encountered.%s" exn_name))
       in
-      let nr_args_given = pytuple_size python_args
-      and nr_args_wanted = Array.length wanted_types in
-      let () = (if nr_args_given = nr_args_wanted then ()
-		else raise (Pycaml_exn(Pyerr_IndexError,
-				       (Printf.sprintf "Args given: %d Wanted: %d.%s" nr_args_given nr_args_wanted exn_name))))
+      let nr_args_given = pytuple_size python_args in
+      let nr_args_wanted = Array.length wanted_types in
+      let () =
+        if nr_args_given <> nr_args_wanted then
+          raise (Pycaml_exn(Pyerr_IndexError,
+				            (Printf.sprintf "Args given: %d Wanted: %d.%s" nr_args_given nr_args_wanted exn_name)))
       in
       let arr_args = pytuple_toarray python_args in
       let rec check_types pos =
-	if pos = nr_args_given
-	then function_body arr_args
-	else
-	  let type_here = pytype arr_args.(pos)
-	  and type_wanted = wanted_types.(pos)
-	  in
-	  let () = (if type_here = type_wanted then ()
-		    else
+	    if pos = nr_args_given then
+          function_body arr_args
+	    else
+	      let type_here = pytype arr_args.(pos) in
+	      let type_wanted = wanted_types.(pos) in
+	      let () =
+            if type_here = type_wanted then
+              ()
+            else if (type_here = UnicodeType || type_here = BytesType) && type_wanted = EitherStringType then
+              ()
+            else
 		      raise (Pycaml_exn
-			       (Pyerr_TypeError,
-				(Printf.sprintf "Argument %d: Type wanted: %s -- Type provided: %s%s."
-				   (pos+1) (* Humans like to start counting at 1. *)
-				   (pytype_name type_wanted)
-				   (pytype_name type_here)
-				   exn_name
-				))))
-	  in
-	    (* Okay, typecheck succeeded.
-	       Now, if extra guards have been provided, try those.
-	    *)
-	    match extra_guards with
-	      | None -> check_types (pos+1)
-	      | Some guards ->
-		  let guard = guards.(pos) in
-		  let guard_error = guard arr_args.(pos) in
-		    match guard_error with
-		      | None -> check_types (pos+1)
-		      | Some msg ->
-			  raise (Pycaml_exn
-				   (Pyerr_TypeError,
-				    (Printf.sprintf "Check for argument %d failed: %s%s."
-				       (pos+1)
-				       msg
-				       exn_name
-				    )))
+			           (Pyerr_TypeError,
+				        (Printf.sprintf "Argument %d: Type wanted: %s -- Type provided: %s%s."
+				           (pos + 1) (* Humans like to start counting at 1. *)
+				           (pytype_name type_wanted)
+				           (pytype_name type_here)
+				           exn_name)))
+	      in
+	        (* Okay, typecheck succeeded.  Now, if extra guards have
+	           been provided, try those. *)
+	        match extra_guards with
+	          | None -> check_types (pos + 1)
+	          | Some guards ->
+		          let guard = guards.(pos) in
+		          let guard_error = guard arr_args.(pos) in
+		            match guard_error with
+		              | None -> check_types (pos+1)
+		              | Some msg ->
+			              raise (Pycaml_exn
+				                   (Pyerr_TypeError,
+				                    (Printf.sprintf "Check for argument %d failed: %s%s."
+				                       (pos+1)
+				                       msg
+				                       exn_name)))
       in
-	check_types 0
+	    check_types 0
     in
-      if _caml_debug_exceptions ()
-      then body () 
+      if _caml_debug_exceptions () then
+        body () 
       else
-	try
-	  body ()
-	with 
-	  | Pycaml_exn (errtype, msg) ->
-	      pycaml_seterror errtype (Printf.sprintf "%s%s" msg exn_name); pynull()
-	  | Not_found ->
-	      pycaml_seterror Pyerr_LookupError (Printf.sprintf "OCaml exception 'Not_found'%s" exn_name);
-	      pynull()
-	  | Division_by_zero ->
-	      pycaml_seterror Pyerr_ZeroDivisionError (Printf.sprintf "OCaml exception 'Division_by_zero'%s" exn_name);
-	      pynull()
-	  | Failure s ->
-	      pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Failure: %s'%s" s exn_name);
-	      pynull ()
-	  | Invalid_argument s ->
-	      pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Invalid_argument: %s'%s" s exn_name);
-	      pynull()
-	  | Out_of_memory ->
-	      pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Out_of_memory'%s" exn_name);
-	      pynull()
-	  | Stack_overflow ->
-	      pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Stack_overflow'%s" exn_name);
-	      pynull()
-	  | Sys_error s ->
-	      pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Sys_error %s'%s" s exn_name);
-	      pynull()
-	  | End_of_file ->
-	      pycaml_seterror Pyerr_IOError (Printf.sprintf "OCaml exception 'End_of_file'%s" exn_name);
-	      pynull()
-	  | Match_failure (filename,line,column) ->
-	      pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Match_failure file=%s line=%d(c. %d)'%s" filename line column exn_name);
-	      pynull()
-	  | Assert_failure (filename,line,column) ->
-	      pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Assert_failure file=%s line=%d(c. %d)'%s" filename line column exn_name);
-	      pynull()
-		
-	  | something_else ->
-	      if catch_weird_exceptions then
-		begin
-		  pycaml_seterror 
-		    Pyerr_StandardError 
-		    (Printf.sprintf "OCaml weird low-level exception (not resolved any further)%s" exn_name);
-		  pynull()
-		end
-	      else raise something_else
+	    try
+	      body ()
+	    with 
+	      | Pycaml_exn (errtype, msg) ->
+	          pycaml_seterror errtype (Printf.sprintf "%s%s" msg exn_name); pynull()
+	      | Not_found ->
+	          pycaml_seterror Pyerr_LookupError (Printf.sprintf "OCaml exception 'Not_found'%s" exn_name);
+	          pynull()
+	      | Division_by_zero ->
+	          pycaml_seterror Pyerr_ZeroDivisionError (Printf.sprintf "OCaml exception 'Division_by_zero'%s" exn_name);
+	          pynull()
+	      | Failure s ->
+	          pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Failure: %s'%s" s exn_name);
+	          pynull ()
+	      | Invalid_argument s ->
+	          pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Invalid_argument: %s'%s" s exn_name);
+	          pynull()
+	      | Out_of_memory ->
+	          pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Out_of_memory'%s" exn_name);
+	          pynull()
+	      | Stack_overflow ->
+	          pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Stack_overflow'%s" exn_name);
+	          pynull()
+	      | Sys_error s ->
+	          pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Sys_error %s'%s" s exn_name);
+	          pynull()
+	      | End_of_file ->
+	          pycaml_seterror Pyerr_IOError (Printf.sprintf "OCaml exception 'End_of_file'%s" exn_name);
+	          pynull()
+	      | Match_failure (filename,line,column) ->
+	          pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Match_failure file=%s line=%d(c. %d)'%s" filename line column exn_name);
+	          pynull()
+	      | Assert_failure (filename,line,column) ->
+	          pycaml_seterror Pyerr_StandardError (Printf.sprintf "OCaml exception 'Assert_failure file=%s line=%d(c. %d)'%s" filename line column exn_name);
+	          pynull()
+		        
+	      | something_else ->
+	          if catch_weird_exceptions then
+		        begin
+		          pycaml_seterror 
+		            Pyerr_StandardError 
+		            (Printf.sprintf "OCaml weird low-level exception (not resolved any further)%s" exn_name);
+		          pynull()
+		        end
+	          else raise something_else
   in
     match name with
       | None -> wrapper work_fun
       | Some pname ->
-	  let profiling_work_fun args =
-	    if not(!_py_profiling_active)
-	    then work_fun args
-	    else
-	      let t0 = Unix.gettimeofday () in
-	      let result = work_fun args in
-	      let t1 = Unix.gettimeofday () in
-	      let old_time_and_calls =
-		try Hashtbl.find _py_profile_hash pname
-		with | Not_found ->
-		  let x = [|0.0;0.0|] in
-		  let () = Hashtbl.add _py_profile_hash pname x in
-		    x
-	      in
-		begin
-		  old_time_and_calls.(0) <- old_time_and_calls.(0) +.(t1-.t0);
-		  old_time_and_calls.(1) <- old_time_and_calls.(1) +.1.0;
-		  result
-		end
-	  in wrapper profiling_work_fun
-;;
+	      let profiling_work_fun args =
+	        if not(!_py_profiling_active)
+	        then work_fun args
+	        else
+	          let t0 = Unix.gettimeofday () in
+	          let result = work_fun args in
+	          let t1 = Unix.gettimeofday () in
+	          let old_time_and_calls =
+		        try Hashtbl.find _py_profile_hash pname
+		        with | Not_found ->
+		          let x = [|0.0;0.0|] in
+		          let () = Hashtbl.add _py_profile_hash pname x in
+		            x
+	          in
+		        begin
+		          old_time_and_calls.(0) <- old_time_and_calls.(0) +.(t1-.t0);
+		          old_time_and_calls.(1) <- old_time_and_calls.(1) +.1.0;
+		          result
+		        end
+	      in wrapper profiling_work_fun
 
 (* python_interfaced_function takes a name argument,
    and indeed it has to, because we want to be able to profile-register
@@ -995,7 +999,6 @@ let python_pre_interfaced_function
   fun name ->
     python_interfaced_function
       ~name ?doc ?extra_guards wanted_types function_body
-;;
 
 
 (* pywrap_value will wrap up OCaml values for Python in such a way
@@ -1052,7 +1055,7 @@ let python_pre_interfaced_function
 *)
 
 (* Mapping name => Unique name. Type names are e.g. "Mesh.mesh". *)
-let _known_ocamlpill_types = ((Hashtbl.create 10):((string, string) Hashtbl.t));;
+let _known_ocamlpill_types = ((Hashtbl.create 10):((string, string) Hashtbl.t))
 
 let _ocamlpill_type_sym ocamlpill_type_name =
   try 
@@ -1062,7 +1065,6 @@ let _ocamlpill_type_sym ocamlpill_type_name =
 	failwith
 	  (Printf.sprintf "Used ocamlpill_type '%s' without register_ocamlpill_type(\"%s\")"
 	     ocamlpill_type_name ocamlpill_type_name)
-;;
 
 let ocamlpill_type_of pill =
   if pytype pill <> CamlpillType
@@ -1073,9 +1075,8 @@ let ocamlpill_type_of pill =
 			   (py_repr pill)
 			))
   else
-    let (type_name, _) = pyunwrap_value pill
-    in type_name (* This is already the uniq'd sym-string! *)
-;;
+    let (type_name, _) = pyunwrap_value pill in
+      type_name
 
 
 let register_ocamlpill_types type_names =
@@ -1086,37 +1087,55 @@ let register_ocamlpill_types type_names =
       else 
 	Hashtbl.add _known_ocamlpill_types type_name type_name)
     type_names
-;;
 
-let make_ocamlpill_wrapper_unwrapper ocamlpill_type_name prototypical_object =
-  let ocamlpill_type_sym = _ocamlpill_type_sym ocamlpill_type_name
-  in
+IFDEF PYMAJOR2 THEN
+let sym_match a b =
+  a == b                      (* Note the == for physical equality. *)
+ELSE
+let sym_match a b =
+  a = b
+ENDIF
+
+let pill_type_mismatch_exception wanted gotten =
+  Pycaml_exn (Pyerr_TypeError, 
+			  (Printf.sprintf "Python-Ocaml Pill Type mismatch: wanted: '%s' - got: '%s'" wanted gotten))
+
+let check_pill_type pill wanted =
+  let gotten = ocamlpill_type_of pill in
+    if not (sym_match gotten wanted) then
+      raise (pill_type_mismatch_exception wanted gotten)
+
+let make_pill_wrapping ocamlpill_type_name prototypical_object =
+  let ocamlpill_type_sym = _ocamlpill_type_sym ocamlpill_type_name in
   let wrapper x =
     pywrap_value_pill
       (ocamlpill_type_sym,
-       (if false then prototypical_object else x)
-	 (* typesystem hack *)
-      )
-  and unwrapper py_value =
-    let (ocamlpill_type_sym_provided, xval)=pyunwrap_value py_value in
-      if ocamlpill_type_sym_provided != ocamlpill_type_sym
-	  (* Note the != not-the-same check; syms are uniq'd strings. *)
-      then
-	raise (Pycaml_exn (Pyerr_TypeError, 
-			   (Printf.sprintf "Python-Ocaml Pill Type mismatch: wanted: '%s' - got: '%s'"
-			      ocamlpill_type_sym ocamlpill_type_sym_provided)))
+       if false then
+         prototypical_object (* Type inference uses this object's type. *)
+       else
+         x)
+  in
+  let unwrapper py_value =
+    let (ocamlpill_type_sym_provided, xval) = pyunwrap_value py_value in
+      if not (sym_match ocamlpill_type_sym_provided ocamlpill_type_sym) then
+	    raise (pill_type_mismatch_exception ocamlpill_type_sym ocamlpill_type_sym_provided)
       else
-	let _value =
-	  if false then prototypical_object (* Type-checking hack *)
-	  else xval
-	in xval
-  in (wrapper, unwrapper)
-;;
+	    let _ =
+	      if false then
+            prototypical_object (* Type inference uses this object's type. *)
+	      else
+            xval
+	    in
+          xval
+  in
+    (wrapper, unwrapper)
+
+let make_ocamlpill_wrapper_unwrapper = make_pill_wrapping
 
 let ocamlpill_hard_unwrap pill =
-  let (_, x)=pyunwrap_value pill in
+  let (_, x) = pyunwrap_value pill in
     x
-;;
+
 
 (* There are situations where we want to provide optional python
    arguments. For the low-level interface, we use the convention to use a
@@ -1159,7 +1178,6 @@ let py_optionally unwrapper py_value =
 	      (Array.length a) (py_repr py_value)))
     else
       if Array.length a = 0 then None else Some (unwrapper a.(0))
-;;
 
 (* There are a few functions which we may want to use in conjunction with py_optionally to get
    optional integers, optional floats, etc., and not just optional pills
@@ -1171,7 +1189,6 @@ let guarded_pyint_asint x =
     (Pycaml_exn(Pyerr_TypeError,
 		Printf.sprintf "Wanted: int, got: %s (%s)" (pytype_name (pytype x)) (py_repr x)))
   else pyint_asint x
-;;
 
 let guarded_pyfloat_asfloat x =
   if pytype x <> FloatType
@@ -1179,7 +1196,6 @@ let guarded_pyfloat_asfloat x =
     (Pycaml_exn(Pyerr_TypeError,
 		Printf.sprintf "Wanted: float, got: %s (%s)" (pytype_name (pytype x)) (py_repr x)))
   else pyfloat_asdouble x
-;;
 
 let guarded_pynumber_asfloat x =
   match pytype x with
@@ -1189,8 +1205,6 @@ let guarded_pynumber_asfloat x =
 	raise
 	  (Pycaml_exn(Pyerr_TypeError,
 		      Printf.sprintf "Wanted: number, got: %s (%s)" (pytype_name (pytype x)) (py_repr x)))
-;;
-
 
 let guarded_pybytes_asstring x =
   if pytype x <> BytesType
@@ -1198,7 +1212,6 @@ let guarded_pybytes_asstring x =
     (Pycaml_exn(Pyerr_TypeError,
 		Printf.sprintf "Wanted: string, got: %s (%s)" (pytype_name (pytype x)) (py_repr x)))
   else pybytes_asstring x
-;;
 
 let guarded_pylist_toarray x =
   if pytype x <> ListType
@@ -1206,7 +1219,6 @@ let guarded_pylist_toarray x =
     (Pycaml_exn(Pyerr_TypeError,
 		Printf.sprintf "Wanted: list, got: %s (%s)" (pytype_name (pytype x)) (py_repr x)))
   else pylist_toarray x
-;;
 
 let guarded_pytuple_toarray x =
   if pytype x <> TupleType
@@ -1214,7 +1226,6 @@ let guarded_pytuple_toarray x =
     (Pycaml_exn(Pyerr_TypeError,
 		Printf.sprintf "Wanted: tuple, got: %s (%s)" (pytype_name (pytype x)) (py_repr x)))
   else pytuple_toarray x
-;;
 
 
 let pycallable_asfun py =
@@ -1227,7 +1238,6 @@ let pycallable_asfun py =
   else
     fun (args:(pyobject array)) ->
       pyeval_callobject(py,pytuple_fromarray args)
-;;
 
 
 (* Note: we do not subject the example/low-level python functions we provide here
@@ -1269,7 +1279,6 @@ nr_calls is a floatingpoint number to overcome 32-bit integer limitations.
 		      r)
 	   | _ -> pynone()
     )
-;;
 
 (* We provide a function to python that allows to check the type
    of an opaque OCaml object.
@@ -1280,7 +1289,6 @@ let _py_ocamlpill_type =
     (fun arr ->
        let (type_name, _) = pyunwrap_value arr.(0)
        in pybytes_fromstring type_name)
-;;
 
 (* Note: using ocaml.sys_python() will return
    the last value computed interactively.
@@ -1289,23 +1297,19 @@ let _py_python =
   python_interfaced_function [||]
     (fun arr ->
       let _ = python() in
-      python_last_value()
-    )
-;;
+      python_last_value())
 
 let _py_ipython =
   python_interfaced_function [||]
     (fun arr ->
       let _ = ipython() in
-      python_last_value()
-    )
-;;
+      python_last_value())
 
 let _py_check_heap =
   python_interfaced_function
     [||]
     (fun arr -> let _ = Gc.full_major () in py_true ())
-;;
+
 
 (* -- init -- *)
 
@@ -1341,7 +1345,7 @@ let _ =
 	("example_the_answer", pyint_fromint 42);
       |];
   end
-;;
+
 
 (* --- Example Code --- *)
 
@@ -1357,32 +1361,30 @@ let _py_make_powers =
   python_interfaced_function
     ~extra_guards:
     [|(fun py_len ->
-	 let len = pyint_asint py_len in
-	   if len < 0
-	   then Some "Negative Length"
-	   else None);
+	     let len = pyint_asint py_len in
+	       if len < 0 then
+             Some "Negative Length"
+	       else
+             None);
       (fun _ -> None); (* This check never fails *)
     |]
     [|IntType;FloatType|]
     (fun py_args ->
        let len = pyint_asint py_args.(0)
-       and pow = pyfloat_asdouble py_args.(1)
-       in
-	 float_array_to_python
-	   (Array.init len (fun n -> let nn = float_of_int (n+1) in nn**pow)))
-and
+       and pow = pyfloat_asdouble py_args.(1) in
+	     float_array_to_python
+	       (Array.init len (fun n -> let nn = float_of_int (n+1) in nn**pow)))
+
+let
     _py_hypotenuse_2d =
   python_interfaced_function
     [|FloatType;FloatType|]
     (fun py_args ->
        let x = pyfloat_asdouble py_args.(0)
-       and y = pyfloat_asdouble py_args.(1)
-       in pyfloat_fromdouble (sqrt(x*.x+.y*.y)))
+       and y = pyfloat_asdouble py_args.(1) in
+         pyfloat_fromdouble (sqrt(x*.x+.y*.y)))
 in
   register_for_python
     [|("example_make_powers", _py_make_powers);
       ("example_hypotenuse", _py_hypotenuse_2d);
     |]
-;;
-
-(* let version () = "$Id: pycaml.ml 4142 2007-09-17 16:59:03Z tf $";; *)
