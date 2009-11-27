@@ -1737,7 +1737,8 @@ enum PycamlTypeLabels {
     CamlpillType,
     OtherType,
     EitherStringType, /* Signifies that either of BytesType or UnicodeType is allowed. */
-    CamlpillSubtype /* Signifies that only the particular Camlpill variety is allowed. */
+    CamlpillSubtype, /* Signifies that only the particular Camlpill variety is allowed. */
+    AnyType          /* Allow any python object. */
 };
 
 value pytype( value obj ) {

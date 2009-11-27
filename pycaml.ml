@@ -59,6 +59,7 @@ type pyobject_type =
   | OtherType
   | EitherStringType (* Signifies that either of BytesType or UnicodeType is allowed. *)
   | CamlpillSubtype of string (* Signifies that only the particular Camlpill variety is allowed. *)
+  | AnyType                   (* Allow any python object. *)
 
 type pyerror_type =
   | Pyerr_Exception
@@ -560,6 +561,7 @@ let pytype_name pt =
   | OtherType -> "Python-Other"
   | EitherStringType -> "Python-EitherString"
   | CamlpillSubtype sym -> "Python-Camlpill-" ^ sym
+  | AnyType -> "Python-Any"
 
 let set_python_argv argv =
   let py_mod_sys_dict = pymodule_getdict (pyimport_importmodule "sys") in
@@ -925,6 +927,8 @@ let python_interfaced_function
 	      let type_wanted = wanted_types.(pos) in
 	      let () =
             match type_wanted with
+              | AnyType ->
+                  ()
               | EitherStringType ->
                   if type_here <> UnicodeType && type_here <> BytesType then
                     raise (type_mismatch_exception type_wanted type_here pos exn_name)

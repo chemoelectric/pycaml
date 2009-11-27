@@ -99,6 +99,7 @@ type pyobject_type =
   | OtherType
   | EitherStringType (* Signifies that either of BytesType or UnicodeType is allowed. *)
   | CamlpillSubtype of string (* Signifies that only the particular Camlpill variety is allowed. *)
+  | AnyType                   (* Allow any python object. *)
 
 type pyerror_type =
   | Pyerr_Exception
