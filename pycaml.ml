@@ -886,18 +886,97 @@ let check_pill_type ?position ?exn_name wanted pill =
     if not (sym_match gotten wanted) then
       raise (pill_type_mismatch_exception ?position:position ?exn_name:exn_name wanted gotten)
 
+let unpythonizing_function
+    ?name                        (* Will be used in error reporting *)
+    ?(catch_weird_exceptions = true)
+    ?extra_guards (* An array of functions mapping pyobject -> failure_string option *)
+    ?(expect_tuple = false)
+    wanted_types
+    function_body =
+  let exn_name =
+    match name with
+      | None -> ""
+      | Some s -> Printf.sprintf " (%s)" s
+  in
+  let work_fun python_args =
+    let body () =
+      let () =
+        if expect_tuple && pytype python_args <> TupleType then
+		  (* ^ This should never happen! *)
+          raise (Pycaml_exn(Pyerr_TypeError, Printf.sprintf "Weird situation: Non-Tuple function args encountered.%s" exn_name))
+      in
+      let nr_args_given =
+        if expect_tuple then
+          pytuple_size python_args
+        else
+          1
+      in
+      let nr_args_wanted = Array.length wanted_types in
+      let () =
+        if nr_args_given <> nr_args_wanted then
+          raise (Pycaml_exn(Pyerr_IndexError,
+				            (Printf.sprintf "Args given: %d Wanted: %d%s" nr_args_given nr_args_wanted exn_name)))
+      in
+      let arr_args =
+        if expect_tuple then
+          pytuple_toarray python_args
+        else
+          [| python_args |]
+      in
+      let rec check_types pos =
+	    if pos = nr_args_given then
+          function_body arr_args
+	    else
+	      let type_here = pytype arr_args.(pos) in
+	      let type_wanted = wanted_types.(pos) in
+	      let () =
+            match type_wanted with
+              | AnyType ->
+                  ()
+              | EitherStringType ->
+                  if type_here <> UnicodeType && type_here <> BytesType then
+                    raise (type_mismatch_exception type_wanted type_here pos exn_name)
+              | CamlpillSubtype sym ->
+                  check_pill_type ~position:pos ~exn_name:exn_name sym arr_args.(pos)
+              | _ ->
+                  if type_here <> type_wanted then
+		            raise (type_mismatch_exception type_wanted type_here pos exn_name)
+	      in
+	        (* Okay, typecheck succeeded.  Now, if extra guards have
+	           been provided, try those. *)
+	        match extra_guards with
+	          | None -> check_types (pos + 1)
+	          | Some guards ->
+		          let guard = guards.(pos) in
+		          let guard_error = guard arr_args.(pos) in
+		            match guard_error with
+		              | None -> check_types (pos+1)
+		              | Some msg ->
+			              raise (Pycaml_exn
+				                   (Pyerr_TypeError,
+				                    (Printf.sprintf "Check for argument %d failed: %s%s"
+				                       (pos + 1)
+				                       msg
+				                       exn_name)))
+      in
+	    check_types 0
+    in
+      body ()
+  in
+    work_fun
+
+(* FIX: Maybe rewrite this as an unpythonizing_function. *)
 let python_interfaced_function
-    ?name (* Will be used in both profiling and error reporting *)
-    ?(catch_weird_exceptions=true)
+    ?name     (* Will be used in both profiling and error reporting *)
+    ?(catch_weird_exceptions = true)
     ?doc
     ?extra_guards (* An array of functions mapping pyobject -> failure_string option *)
-    wanted_types function_body =
+    wanted_types
+    function_body =
   let wrapper =
-    begin
-      match doc with
-        | None -> pywrap_closure
-        | Some docstring -> (pywrap_closure_docstring docstring)
-    end
+    match doc with
+      | None -> pywrap_closure
+      | Some docstring -> (pywrap_closure_docstring docstring)
   in
   let exn_name =
     match name with
@@ -1028,7 +1107,8 @@ let python_interfaced_function
 		          old_time_and_calls.(1) <- old_time_and_calls.(1) +.1.0;
 		          result
 		        end
-	      in wrapper profiling_work_fun
+	      in
+            wrapper profiling_work_fun
 
 (* python_interfaced_function takes a name argument,
    and indeed it has to, because we want to be able to profile-register

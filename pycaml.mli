@@ -307,6 +307,13 @@ val py_string_list_list_as_array :
 val pythonize_string : string -> pyobject
 val unpythonize_string : pyobject -> string
 
+val unpythonizing_function :
+  ?name:string ->
+  ?catch_weird_exceptions:bool ->
+  ?extra_guards:(pyobject -> string option) array ->
+  ?expect_tuple:bool ->
+  pyobject_type array -> (pyobject array -> 'a) -> pyobject -> 'a
+
 (** This helper simplifies the creation of OCaml callbacks that
     can be registered in Python's "[ocaml]" module.
     
