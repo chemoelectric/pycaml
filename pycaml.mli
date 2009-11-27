@@ -24,6 +24,7 @@
    Dr. Hans Fangohr, SES, University of Southampton
 
    More modifications are by Barry Schwartz.
+   Copyright (C) 2009 Barry Schwartz.
 
 *)
 
@@ -96,6 +97,8 @@ type pyobject_type =
   | NullType
   | CamlpillType
   | OtherType
+  | EitherStringType (* Signifies that either of BytesType or UnicodeType is allowed. *)
+  | CamlpillSubtype of string (* Signifies that only the particular Camlpill variety is allowed. *)
 
 type pyerror_type =
   | Pyerr_Exception
@@ -130,7 +133,7 @@ exception Pycaml_exn of (pyerror_type * string)
 val pytype : pyobject -> pyobject_type
 
 (** Also note the existence of [pytype_name], which maps python types to
-human-readable strings. *)
+    human-readable strings. *)
 
 (* Pycaml contains quite some stuff which we should not
    tell the outside world about. For now, this is in comments,
@@ -165,9 +168,9 @@ val py_finalize : unit -> unit
     of them. So for now, if there is a question, look at
     the source, or ask [t.fischbacher\@soton.ac.uk].)
 
-   In order not to clutter the Pycaml documentation with a block of
-   unreadable code, they have been moved to the last section.
- *)
+    In order not to clutter the Pycaml documentation with a block of
+    unreadable code, they have been moved to the last section.
+*)
 
 (** {3 On wrapping up Ocaml values for Python} *)
 
@@ -202,9 +205,9 @@ val py_repr : pyobject -> string
 
 val pylist_fromarray : pyobject array -> pyobject
 val pylist_toarray : pyobject -> pyobject array
-(** Map an OCaml array of Python values to a Python list and vice versa.
-    (This was just missing.)
-*)
+  (** Map an OCaml array of Python values to a Python list and vice versa.
+      (This was just missing.)
+  *)
 
 val pylist_set : pyobject -> int -> pyobject -> unit
 val pylist_get : pyobject -> int -> pyobject
@@ -212,10 +215,10 @@ val pylist_get : pyobject -> int -> pyobject
 val pyrefcount: pyobject -> int
 
 val pywrap_closure_docstring : string -> (pyobject -> pyobject) -> pyobject 
-(** While the functions in ocaml.* should not be made visible
-   to end users directly, it may nevertheless be helpful to be
-   able to set docstrings on them.
- *)
+  (** While the functions in ocaml.* should not be made visible
+      to end users directly, it may nevertheless be helpful to be
+      able to set docstrings on them.
+  *)
 
 (** Return a name-string for an Ocaml Python-Object-Type value.
     Used mainly for debugging and in error messages. *)
@@ -238,19 +241,19 @@ val py_is_true : pyobject -> bool
    Note that as a convention, one must not register names that start with
    the string "[example_]" or "[sys_]", as those are reserved for internal
    use by Pycaml.
- *)
+*)
 val register_for_python : (string * pyobject) array -> unit
 val register_pre_functions_for_python : (string * (string ->pyobject)) array -> unit
 
 val float_array_to_python : float array -> pyobject
 val int_array_to_python : int array -> pyobject
-(** These functions provides a quick and convenient way to pass a
-    simple array of numbers to Python. Note that {i neither} on the
-    OCaml nor on the Python side, the special data structure for efficient
-    manipulation of large numerical arrays is used
-    (OCaml: bigarray, Python: numarray). Rather, this just maps
-    ordinary arrays.
-*)
+  (** These functions provides a quick and convenient way to pass a
+      simple array of numbers to Python. Note that {i neither} on the
+      OCaml nor on the Python side, the special data structure for efficient
+      manipulation of large numerical arrays is used
+      (OCaml: bigarray, Python: numarray). Rather, this just maps
+      ordinary arrays.
+  *)
 
 val py_float_tensor : ?init:(int array -> float) -> int array -> pyobject * (int array -> pyobject -> unit)
 
@@ -300,6 +303,8 @@ val py_string_list_list_as_array :
   ?error_label:string ->
   ?length_outer:int -> ?length_inner:int -> pyobject -> string array array
 
+val pythonize_string : string -> pyobject
+val unpythonize_string : pyobject -> string
 
 (** This helper simplifies the creation of OCaml callbacks that
     can be registered in Python's "[ocaml]" module.
@@ -319,7 +324,7 @@ val py_string_list_list_as_array :
     argument array being of the Python type specified in the n'th
     position of the type array.
 
-   XXX Note: we need examples in the documentation!
+    XXX Note: we need examples in the documentation!
 *)
 val python_interfaced_function :
   ?name:string ->
@@ -349,11 +354,11 @@ val python_pre_interfaced_function :
     values. This is based on the following assumptions:
 
     {ol
-     {li The number of different OCaml types we might want to make visible
-         to Python is quite limited. (In particular, we do not even try
-         to properly support polymorphism.)}
-     {li Python should be allowed to take a peek at the type name of a
-         wrapped OCaml value at runtime}
+    {li The number of different OCaml types we might want to make visible
+    to Python is quite limited. (In particular, we do not even try
+    to properly support polymorphism.)}
+    {li Python should be allowed to take a peek at the type name of a
+    wrapped OCaml value at runtime}
     }
     
     Thus, before one can opaquely wrap up OCaml values in "ocamlpills"
@@ -378,10 +383,15 @@ val ocamlpill_type_of : pyobject -> string
     is. (A clever compiler might be able to figure out how to get rid of
     that, though.)
 
-   XXX Provide example code!
+    XXX Provide example code!
 *) 
-val make_ocamlpill_wrapper_unwrapper :
-  string -> 'a -> ('a -> pyobject) * (pyobject -> 'b)
+val pill_type_mismatch_exception : ?position:'a -> ?exn_name:string -> string -> string -> exn
+val check_pill_type : ?position:'a -> ?exn_name:string -> string -> pyobject -> unit
+val make_ocamlpill_wrapper_unwrapper : string -> 'a -> ('a -> pyobject) * (pyobject -> 'b) (* Deprecated, I guess.
+                                                                                              Use |make_pill_wrapping|
+                                                                                              instead. *)
+val make_pill_wrapping : string -> 'a -> ('a -> pyobject) * (pyobject -> 'b) (* A less cumbersome synonym. *)
+
 
 (** Also, we want to be able to pass optional arguments from python to OCaml.
     The convention which we use for now is as follows:
@@ -389,7 +399,7 @@ val make_ocamlpill_wrapper_unwrapper :
     - Conceptually, an optional argument has to be a container monadic type.
     - The only thing offered by python which looks like such a thing is the list.
     - Hence, optional values are represented as 0-element or 1-element lists
-      on the python side.
+    on the python side.
 
     We then need ocaml functions that make it convenient to handle the automatic
     unpacking of such values. (XXX Note: we need examples in the documentation
@@ -408,8 +418,8 @@ val pycallable_asfun : pyobject -> pyobject array -> pyobject
 
 
 (** This is semi-internal - It should only be used for writing other
-   convenience type applicators that have their own way of doing the checking.
- *)
+    convenience type applicators that have their own way of doing the checking.
+*)
 val ocamlpill_hard_unwrap : pyobject -> 'a
 
 (** {3 Running and evaluating Python from within OCaml} *)
@@ -419,7 +429,7 @@ val ocamlpill_hard_unwrap : pyobject -> 'a
 val set_python_argv : string array -> unit
 
 (** A convenience function for just letting the Python interpreter
-   evaluate a block of Python code.
+    evaluate a block of Python code.
 *)
 val python_eval : string -> int
 
@@ -443,7 +453,7 @@ val python : unit -> int
     this does not seem to be 100% reliable, and especially seems to fail
     in many situations where [Pycaml.ipython()] is called not from the
     OCaml toplevel. May be some crazy terminal handling bug.
-   
+    
     Addition: 23/01/2006 fangohr:
     
     On Mac OS X, one of the problems is that there are often several Python
@@ -451,7 +461,7 @@ val python : unit -> int
     installation is actually meant to use.) For fink-python (the binary 
     installed in /sw/bin, it helps to set the shell environment variable 
     PYTHONHOME=/sw .
- 
+    
     Then the call to ipython works fine.
 
 *)
@@ -460,79 +470,79 @@ val ipython : unit -> int
 (** {2 Python Functions} *)
 
 (** All functions which are made visible from OCaml to python by means of
-   [register_for_python] go into the Python module [ocaml]. Usually, one wants
-   to place low-level interface functions there and build higher levels of
-   abstraction on the python side on top of it which are more convenient
-   (maybe object-oriented) to the Python end user. So, the user of a Python
-   library that uses OCaml callbacks internally should (ideally) never notice
-   the existence of the [ocaml] Python module.
+    [register_for_python] go into the Python module [ocaml]. Usually, one wants
+    to place low-level interface functions there and build higher levels of
+    abstraction on the python side on top of it which are more convenient
+    (maybe object-oriented) to the Python end user. So, the user of a Python
+    library that uses OCaml callbacks internally should (ideally) never notice
+    the existence of the [ocaml] Python module.
 
-   The following names are pre-registered in the [ocaml] module.
-   Note that they all start with the reserved prefixes [sys_] or [example_].
+    The following names are pre-registered in the [ocaml] module.
+    Note that they all start with the reserved prefixes [sys_] or [example_].
 
-   - [sys_ocamlpill_type]: Function that maps an OCaml pill to a type string,
-     so that Python can find out what a given pill is supposed to be. (The OCaml
-     function name is [ocamlpill_type_of].)
+    - [sys_ocamlpill_type]: Function that maps an OCaml pill to a type string,
+    so that Python can find out what a given pill is supposed to be. (The OCaml
+    function name is [ocamlpill_type_of].)
 
-   - [sys_python]: Function that starts a recursive Python toplevel.
-     This may seem strange at first, but actually is highly useful e.g. for
-     providing some interactive control deep inside a contrived function during
-     debugging. Return value is the value computed last on the recursive python
-     command prompt.
+    - [sys_python]: Function that starts a recursive Python toplevel.
+    This may seem strange at first, but actually is highly useful e.g. for
+    providing some interactive control deep inside a contrived function during
+    debugging. Return value is the value computed last on the recursive python
+    command prompt.
 
-   - [example_test_interface]: Function that just prints a test string.
+    - [example_test_interface]: Function that just prints a test string.
 
-   - [example_the_answer]: The number "42", put in the [ocaml] module by OCaml.
-   
-   - [example_make_powers]: A function mapping an integer [n] and a float [p]
-   to the array {v [|1.0**p,2.0**p,...,(float_of_int n)**p|] v}.
+    - [example_the_answer]: The number "42", put in the [ocaml] module by OCaml.
+    
+    - [example_make_powers]: A function mapping an integer [n] and a float [p]
+    to the array {v [|1.0**p,2.0**p,...,(float_of_int n)**p|] v}.
 
-   - [example_hypotenuse]: A function mapping two floatingpoint values [x,y] to
-   [sqrt(x**2+y**2)].
+    - [example_hypotenuse]: A function mapping two floatingpoint values [x,y] to
+    [sqrt(x**2+y**2)].
 
-   It is instructive to have a look at the pycaml source providing the
-   [example_] entries to see how one can publish other constants and
-   functions to Python. 
- *)
+    It is instructive to have a look at the pycaml source providing the
+    [example_] entries to see how one can publish other constants and
+    functions to Python. 
+*)
 
 (** {2 Code Examples} *)
 
 (** The implementations of [example_make_powers] and [example_hypotenuse]
-   demonstrate how to use [python_interfaced_function]:
+    demonstrate how to use [python_interfaced_function]:
 
-{v
-let _py_make_powers =
-  python_interfaced_function
+    {v
+    let _py_make_powers =
+    python_interfaced_function
     ~extra_guards:
     [|(fun py_len ->
-	 let len = pyint_asint py_len in
-	   if len < 0
-	   then Some "Negative Length"
-	   else None);
-      (fun _ -> None); (* This check never fails *)
+	let len = pyint_asint py_len in
+	if len < 0
+	then Some "Negative Length"
+	else None);
+    (fun _ -> None); (* This check never fails *)
     |]
     [|IntType;FloatType|]
     (fun py_args ->
-       let len = pyint_asint py_args.(0)
-       and pow = pyfloat_asdouble py_args.(1)
-       in
-	 float_array_to_python
-	   (Array.init len (fun n -> let nn = float_of_int (n+1) in nn**pow)))
-and
+    let len = pyint_asint py_args.(0)
+    and pow = pyfloat_asdouble py_args.(1)
+    in
+	float_array_to_python
+	(Array.init len (fun n -> let nn = float_of_int (n+1) in nn**pow)))
+    and
     _py_hypotenuse_2d =
-  python_interfaced_function
+    python_interfaced_function
     [|FloatType;FloatType|]
     (fun py_args ->
-       let x = pyfloat_asdouble py_args.(0)
-       and y = pyfloat_asdouble py_args.(1)
-       in pyfloat_fromdouble (sqrt(x*.x+.y*.y)))
-in
-  register_for_python
+    let x = pyfloat_asdouble py_args.(0)
+    and y = pyfloat_asdouble py_args.(1)
+    in pyfloat_fromdouble (sqrt(x*.x+.y*.y)))
+    in
+    register_for_python
     [|("example_make_powers", _py_make_powers);
-      ("example_hypotenuse", _py_hypotenuse_2d);
+    ("example_hypotenuse", _py_hypotenuse_2d);
     |]
-;;
-v}
+    ;;
+    v}
 
 *)
 
@@ -586,13 +596,13 @@ val pyobject_richcomparebool : pyobject * pyobject * int -> int
 val pyobject_setattrstring : pyobject * string * pyobject -> int 
 val pyobject_hasattrstring : pyobject * string -> int 
 
-IFDEF PYCAML2 THEN
+  IFDEF PYCAML2 THEN
 val pyobject_compare : pyobject * pyobject -> int 
-END
+  END
 
 (* Currently not implemented.
-val pynumber_coerce : pyobject * pyobject -> (pyobject * pyobject) option
-val pynumber_coerceex : pyobject * pyobject -> (pyobject * pyobject) option
+   val pynumber_coerce : pyobject * pyobject -> (pyobject * pyobject) option
+   val pynumber_coerceex : pyobject * pyobject -> (pyobject * pyobject) option
 *)
 
 val pyobject_setattr : pyobject * pyobject * pyobject -> int 
@@ -610,10 +620,10 @@ val pystring_asstringandsize : pyobject -> string (* Legacy support *)
 val pybytes_fromstring : string -> pyobject 
 val pystring_fromstring : string -> pyobject (* Legacy support *)
 
-IFDEF PYMAJOR2 THEN
+  IFDEF PYMAJOR2 THEN
 val pybytes_format : pyobject * pyobject -> pyobject
 val pystring_format : pyobject * pyobject -> pyobject (* Legacy support *)
-END
+  END
 
 val pyunicode_asutf8string : pyobject -> pyobject
 val pyunicode_decodeutf8 : (string * string option) -> pyobject
@@ -623,7 +633,7 @@ val pydict_getitem : pyobject * pyobject -> pyobject
 val pydict_setitem : pyobject * pyobject * pyobject -> int 
 val pydict_delitem : pyobject * pyobject -> int 
 val pydict_clear : pyobject -> unit 
-(* val pydict_next : pyobject * int -> (pyobject * pyobject * int) option  <-- currently not implemented *)
+  (* val pydict_next : pyobject * int -> (pyobject * pyobject * int) option  <-- currently not implemented *)
 val pydict_keys : pyobject -> pyobject 
 val pydict_values : pyobject -> pyobject 
 val pydict_items : pyobject -> pyobject 
@@ -635,9 +645,9 @@ val pydict_setitemstring : pyobject * string * pyobject -> int
 
 val pyint_fromlong : int64 -> pyobject 
 val pyint_aslong : pyobject -> int64 
-IFDEF PYMAJOR2 THEN
+  IFDEF PYMAJOR2 THEN
 val pyint_getmax : unit -> int64
-END
+  END
 
 val pyfloat_fromdouble : float -> pyobject 
 val pyfloat_asdouble : pyobject -> float 
@@ -654,7 +664,7 @@ val pytuple_setitem : pyobject * int * pyobject -> int
 val pytuple_getslice : pyobject * int * int -> int
 
 val pyslice_new : pyobject * pyobject * pyobject -> pyobject 
-(* val pyslice_getindices : pyobject * int -> (int * int * int) option   <- Currently not supported *)
+  (* val pyslice_getindices : pyobject * int -> (int * int * int) option   <- Currently not supported *)
 
 val pyerr_setnone : pyobject -> unit 
 val pyerr_setobject : pyobject * pyobject -> unit 
@@ -667,23 +677,23 @@ val pyerr_givenexceptionmatches : pyobject * pyobject -> int
 val pyerr_exceptionmatches : pyobject -> int 
 val pyerr_normalizeexception : pyobject * pyobject * pyobject -> pyobject * pyobject * pyobject 
 
-IFDEF PYMAJOR2 THEN
+  IFDEF PYMAJOR2 THEN
 val pyclass_new : pyobject * pyobject * pyobject -> pyobject 
 val pyinstance_new : pyobject * pyobject * pyobject -> pyobject 
 val pyinstance_newraw : pyobject * pyobject -> pyobject
-END
+  END
 
-IFDEF PYMAJOR2 THEN
+  IFDEF PYMAJOR2 THEN
 val pymethod_new : pyobject * pyobject * pyobject -> pyobject 
-ELSE
+  ELSE
 val pymethod_new : pyobject * pyobject -> pyobject 
-END
+  END
 
 val pymethod_function : pyobject -> pyobject 
 val pymethod_self : pyobject -> pyobject 
-IFDEF PYMAJOR2 THEN
+  IFDEF PYMAJOR2 THEN
 val pymethod_class : pyobject -> pyobject 
-END
+  END
 
 val pyimport_getmagicnumber : unit -> int64 
 val pyimport_execcodemodule : pyobject * string -> pyobject 
@@ -702,11 +712,11 @@ val pyeval_callobject : pyobject * pyobject -> pyobject
 val pyeval_getbuiltins : unit -> pyobject 
 val pyeval_getglobals : unit -> pyobject 
 val pyeval_getlocals : unit -> pyobject 
-(* val pyeval_getframe : unit -> pyobject  -- FIX: see comment in stubs code. *)
+  (* val pyeval_getframe : unit -> pyobject  -- FIX: see comment in stubs code. *)
 
-IFDEF PYMAJOR2 THEN
+  IFDEF PYMAJOR2 THEN
 val pyeval_getrestricted : unit -> int
-END
+  END
 
 val pyobject_type : pyobject -> pyobject 
 val pyobject_size : pyobject -> int 
@@ -723,9 +733,9 @@ val pynumber_subtract : pyobject * pyobject -> pyobject
 val pynumber_multiply : pyobject * pyobject -> pyobject 
 val pynumber_truedivide : pyobject * pyobject -> pyobject 
 val pynumber_floordivide : pyobject * pyobject -> pyobject 
-IFDEF PYMAJOR2 THEN
+  IFDEF PYMAJOR2 THEN
 val pynumber_divide : pyobject * pyobject -> pyobject 
-END
+  END
 val pynumber_remainder : pyobject * pyobject -> pyobject 
 val pynumber_divmod : pyobject * pyobject -> pyobject 
 val pynumber_power : pyobject * pyobject * pyobject -> pyobject 
@@ -738,9 +748,9 @@ val pynumber_rshift : pyobject * pyobject -> pyobject
 val pynumber_and : pyobject * pyobject -> pyobject 
 val pynumber_xor : pyobject * pyobject -> pyobject 
 val pynumber_or : pyobject * pyobject -> pyobject 
-IFDEF PYMAJOR2 THEN
+  IFDEF PYMAJOR2 THEN
 val pynumber_int : pyobject -> pyobject
-END
+  END
 val pynumber_long : pyobject -> pyobject 
 val pynumber_float : pyobject -> pyobject 
 val pynumber_inplaceadd : pyobject * pyobject -> pyobject 
@@ -748,9 +758,9 @@ val pynumber_inplacesubtract : pyobject * pyobject -> pyobject
 val pynumber_inplacemultiply : pyobject * pyobject -> pyobject 
 val pynumber_inplacetruedivide : pyobject * pyobject -> pyobject 
 val pynumber_inplacefloordivide : pyobject * pyobject -> pyobject 
-IFDEF PYMAJOR2 THEN
+  IFDEF PYMAJOR2 THEN
 val pynumber_inplacedivide : pyobject * pyobject -> pyobject 
-END
+  END
 val pynumber_inplaceremainder : pyobject * pyobject -> pyobject 
 val pynumber_inplacelshift : pyobject * pyobject -> pyobject 
 val pynumber_inplacershift : pyobject * pyobject -> pyobject 

@@ -10,7 +10,7 @@ RESULT  = pycaml${PYVER_PACK}
 THREADS = yes
 LDFLAGS = -lpython${PYVER}
 CFLAGS  = -g -O2 -fPIC -Wall -Werror
-OCAMLFLAGS = -pp "camlp4o Camlp4MacroParser.cmo -D PYMAJOR`echo ${PYVER} | sed -e 's/\\..*//'`"
+OCAMLFLAGS = -pp "camlp4o -parser Camlp4MacroParser -D PYMAJOR`echo ${PYVER} | sed -e 's/\\..*//'`"
 OCAMLDEP = ocamldep ${OCAMLFLAGS}
 
 INCDIRS=$(PYTHON_INCLUDE_PATH)

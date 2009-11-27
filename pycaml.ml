@@ -58,6 +58,7 @@ type pyobject_type =
   | CamlpillType
   | OtherType
   | EitherStringType (* Signifies that either of BytesType or UnicodeType is allowed. *)
+  | CamlpillSubtype of string (* Signifies that only the particular Camlpill variety is allowed. *)
 
 type pyerror_type =
   | Pyerr_Exception
@@ -558,6 +559,7 @@ let pytype_name pt =
   | CamlpillType -> "Python-Camlpill"
   | OtherType -> "Python-Other"
   | EitherStringType -> "Python-EitherString"
+  | CamlpillSubtype sym -> "Python-Camlpill-" ^ sym
 
 let set_python_argv argv =
   let py_mod_sys_dict = pymodule_getdict (pyimport_importmodule "sys") in
@@ -835,6 +837,53 @@ let _caml_debug_exceptions () =
     with
       | Not_found -> false
 
+let type_mismatch_exception type_wanted type_here pos exn_name =
+  Pycaml_exn
+	(Pyerr_TypeError,
+	 (Printf.sprintf "Argument %d: Type wanted: %s -- Type provided: %s%s."
+		(pos + 1) (* Humans like to start counting at 1. *)
+		(pytype_name type_wanted)
+		(pytype_name type_here)
+		exn_name))
+
+IFDEF PYMAJOR2 THEN
+let sym_match a b =
+  a == b                      (* Note the == for physical equality. *)
+ELSE
+let sym_match a b =
+  a = b
+ENDIF
+
+let pill_type_mismatch_exception ?position ?exn_name wanted gotten =
+  let arg_no =
+    match position with
+      | None -> ""
+      | Some p -> "Argument %d: "
+  in
+  let en =
+    match exn_name with
+      | None -> ""
+      | Some n -> n
+  in
+  Pycaml_exn (Pyerr_TypeError, 
+			  arg_no ^ (Printf.sprintf "Python-Ocaml Pill Type mismatch: wanted: '%s' - got: '%s'" wanted gotten) ^ en)
+
+let ocamlpill_type_of pill =
+  if pytype pill <> CamlpillType then
+    (* may happen if we e.g. look at list entries *)
+    raise (Pycaml_exn(Pyerr_TypeError,
+			 Printf.sprintf "Expected OCaml pill - got: %s (%s)"
+			   (pytype_name (pytype pill))
+			   (py_repr pill)))
+  else
+    let (type_name, _) = pyunwrap_value pill in
+      type_name
+
+let check_pill_type ?position ?exn_name wanted pill =
+  let gotten = ocamlpill_type_of pill in
+    if not (sym_match gotten wanted) then
+      raise (pill_type_mismatch_exception ?position:position ?exn_name:exn_name wanted gotten)
+
 let python_interfaced_function
     ?name (* Will be used in both profiling and error reporting *)
     ?(catch_weird_exceptions=true)
@@ -865,7 +914,7 @@ let python_interfaced_function
       let () =
         if nr_args_given <> nr_args_wanted then
           raise (Pycaml_exn(Pyerr_IndexError,
-				            (Printf.sprintf "Args given: %d Wanted: %d.%s" nr_args_given nr_args_wanted exn_name)))
+				            (Printf.sprintf "Args given: %d Wanted: %d%s" nr_args_given nr_args_wanted exn_name)))
       in
       let arr_args = pytuple_toarray python_args in
       let rec check_types pos =
@@ -875,18 +924,15 @@ let python_interfaced_function
 	      let type_here = pytype arr_args.(pos) in
 	      let type_wanted = wanted_types.(pos) in
 	      let () =
-            if type_here = type_wanted then
-              ()
-            else if (type_here = UnicodeType || type_here = BytesType) && type_wanted = EitherStringType then
-              ()
-            else
-		      raise (Pycaml_exn
-			           (Pyerr_TypeError,
-				        (Printf.sprintf "Argument %d: Type wanted: %s -- Type provided: %s%s."
-				           (pos + 1) (* Humans like to start counting at 1. *)
-				           (pytype_name type_wanted)
-				           (pytype_name type_here)
-				           exn_name)))
+            match type_wanted with
+              | EitherStringType ->
+                  if type_here <> UnicodeType && type_here <> BytesType then
+                    raise (type_mismatch_exception type_wanted type_here pos exn_name)
+              | CamlpillSubtype sym ->
+                  check_pill_type ~position:pos ~exn_name:exn_name sym arr_args.(pos)
+              | _ ->
+                  if type_here <> type_wanted then
+		            raise (type_mismatch_exception type_wanted type_here pos exn_name)
 	      in
 	        (* Okay, typecheck succeeded.  Now, if extra guards have
 	           been provided, try those. *)
@@ -900,8 +946,8 @@ let python_interfaced_function
 		              | Some msg ->
 			              raise (Pycaml_exn
 				                   (Pyerr_TypeError,
-				                    (Printf.sprintf "Check for argument %d failed: %s%s."
-				                       (pos+1)
+				                    (Printf.sprintf "Check for argument %d failed: %s%s"
+				                       (pos + 1)
 				                       msg
 				                       exn_name)))
       in
@@ -1026,7 +1072,8 @@ let python_pre_interfaced_function
    at runtime.
    
    * We abuse OCaml strings as type tag symbols, which have been
-   uniq'd through an identity hash map.
+   uniq'd through an identity hash map.  (B.S.: In the PyCapsule
+   implementation, we use the capsule name field and don't uniq it.)
 
    * The only values which are wrapped up for python are of the structure
    (type_tag_string,ref value)
@@ -1066,19 +1113,6 @@ let _ocamlpill_type_sym ocamlpill_type_name =
 	  (Printf.sprintf "Used ocamlpill_type '%s' without register_ocamlpill_type(\"%s\")"
 	     ocamlpill_type_name ocamlpill_type_name)
 
-let ocamlpill_type_of pill =
-  if pytype pill <> CamlpillType
-    (* may happen if we e.g. look at list entries *)
-  then raise (Pycaml_exn(Pyerr_TypeError,
-			 Printf.sprintf "Expected OCaml pill - got: %s (%s)"
-			   (pytype_name (pytype pill))
-			   (py_repr pill)
-			))
-  else
-    let (type_name, _) = pyunwrap_value pill in
-      type_name
-
-
 let register_ocamlpill_types type_names =
   Array.iter
     (fun type_name ->
@@ -1087,23 +1121,6 @@ let register_ocamlpill_types type_names =
       else 
 	Hashtbl.add _known_ocamlpill_types type_name type_name)
     type_names
-
-IFDEF PYMAJOR2 THEN
-let sym_match a b =
-  a == b                      (* Note the == for physical equality. *)
-ELSE
-let sym_match a b =
-  a = b
-ENDIF
-
-let pill_type_mismatch_exception wanted gotten =
-  Pycaml_exn (Pyerr_TypeError, 
-			  (Printf.sprintf "Python-Ocaml Pill Type mismatch: wanted: '%s' - got: '%s'" wanted gotten))
-
-let check_pill_type pill wanted =
-  let gotten = ocamlpill_type_of pill in
-    if not (sym_match gotten wanted) then
-      raise (pill_type_mismatch_exception wanted gotten)
 
 let make_pill_wrapping ocamlpill_type_name prototypical_object =
   let ocamlpill_type_sym = _ocamlpill_type_sym ocamlpill_type_name in
