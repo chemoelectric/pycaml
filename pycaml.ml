@@ -790,24 +790,6 @@ let py_string_list_list_as_array ?error_label ?length_outer ?length_inner arr =
   Array.map (py_string_list_as_array ?error_label ?length:length_inner) arr_outer
 
 
-(* OCaml string encoded in UTF-8 --> Python 3 string type (= Python 2 unicode type) *)
-let pythonize_string s =
-  pyunicode_decodeutf8(s, None)
-
-(* Python 3 string or bytes type --> OCaml string encoded in UTF-8 *)
-let unpythonize_string s =
-  let t = pytype s in
-    match t with
-      | UnicodeType -> pybytes_asstringandsize (pyunicode_asutf8string s)
-      | BytesType   -> pybytes_asstringandsize s
-      | _ ->
-          raise (Pycaml_exn
-                   (Pyerr_TypeError, 
-			        (Printf.sprintf
-                       "In OCaml code, got Python type %s where bytes or unicode was expected"
-                       (pytype_name t))))
-
-
 (* When registering an OCaml function for Python, we should include
    quite some extra run-time type checks. Rationale: Python users expect
    programming errors to produce error messages, not crash the system.
@@ -964,6 +946,24 @@ let unpythonizing_function
       body ()
   in
     work_fun
+
+(* OCaml string encoded in UTF-8 --> Python 3 string type (= Python 2 unicode type) *)
+let pythonize_string s =
+  pyunicode_decodeutf8(s, None)
+
+(* Python 3 string or bytes type --> OCaml string encoded in UTF-8 *)
+let unpythonize_string =
+  unpythonizing_function
+    [| EitherStringType |]
+    begin
+      fun py_args ->
+        let s = py_args.(0) in
+        let t = pytype s in
+          match t with
+            | UnicodeType -> pybytes_asstringandsize (pyunicode_asutf8string s)
+            | BytesType   -> pybytes_asstringandsize s
+            | _ -> assert false
+    end
 
 (* FIX: Maybe rewrite this as an unpythonizing_function. *)
 let python_interfaced_function
@@ -1178,6 +1178,10 @@ let python_pre_interfaced_function
    values. Evidently, it is very desirable to have one.
 
    After a few failed attempts, the least bad name I can come up with is "ocamlpill".
+
+   (B.S.: Personally, I have always liked the name, and now the name
+   is especially good, because an ocamlpill has become a sort of
+   "capsule", PyCapsule.)
 
    * ocamlpill type names are unique and considered as global. It is desirable
    to provide a Python function that returns this name, so those names should not be 
