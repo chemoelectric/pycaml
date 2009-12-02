@@ -179,6 +179,8 @@ external pymethod_class : pyobject -> pyobject = "PyMethod_Class_wrapper"
 END
 external pymodule_getdict : pyobject -> pyobject = "PyModule_GetDict_wrapper"
 external pyunicode_asutf8string : pyobject -> pyobject = "PyUnicode_AsUTF8String_wrapper"
+external pyunicode_asutf16string : pyobject -> pyobject = "PyUnicode_AsUTF16String_wrapper"
+external pyunicode_asutf32string : pyobject -> pyobject = "PyUnicode_AsUTF32String_wrapper"
 external pyobject_repr : pyobject -> pyobject = "PyObject_Repr_wrapper"
 external pyimport_reloadmodule : pyobject -> pyobject = "PyImport_ReloadModule_wrapper"
 external pyimport_import : pyobject -> pyobject = "PyImport_Import_wrapper"
@@ -430,6 +432,10 @@ external pysequence_delslice : (pyobject * int * int) -> int = "PySequence_DelSl
 
 (* TypeUTF8Decoder *)
 external pyunicode_decodeutf8 : (string * string option) -> pyobject = "PyUnicode_DecodeUTF8_wrapper"
+
+(* TypeUTF16Decoder *)
+external pyunicode_decodeutf16 : (string * string option * int option) -> pyobject = "PyUnicode_DecodeUTF16_wrapper"
+external pyunicode_decodeutf32 : (string * string option * int option) -> pyobject = "PyUnicode_DecodeUTF32_wrapper"
 
 (*-----------------------------------------------------------------------*)
 

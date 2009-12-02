@@ -790,6 +790,8 @@ Type14(PyMethod_Class, pywrap)
 #endif
 
 Type14(PyUnicode_AsUTF8String, pywrap_steal)
+Type14(PyUnicode_AsUTF16String, pywrap_steal)
+Type14(PyUnicode_AsUTF32String, pywrap_steal)
 Type14(PyObject_Repr, pywrap_steal)
 Type14(PyImport_ReloadModule, pywrap_steal)
 Type14(PyImport_Import, pywrap_steal)
@@ -1510,6 +1512,37 @@ Type51(PyImport_ImportModuleEx, pywrap_steal)
     }
 
 TypeUTF8Decoder(PyUnicode_DecodeUTF8, pywrap_steal)
+
+/*-----------------------------------------------------------------------*/
+
+#define TypeUTF16Decoder(func, wrap_obj)                                \
+    CAMLprim value func##_wrapper(value py_args)                        \
+    {                                                                   \
+        CAMLparam1(py_args);                                            \
+                                                                        \
+        PyObject *result;                                               \
+        char *errors;                                                   \
+                                                                        \
+        char *s = String_val(Field(py_args, 0));                        \
+        Py_ssize_t s_length = caml_string_length(Field(py_args, 0));    \
+                                                                        \
+        if (Field(py_args, 1) == Val_int(0))                            \
+            errors = NULL;                                              \
+        else                                                            \
+            errors = String_val(Field(Field(py_args, 1), 0));           \
+                                                                        \
+        if (Field(py_args, 2) == Val_int(0))                            \
+            result = func(s, s_length, errors, NULL);                   \
+        else {                                                          \
+            int byteorder = Int_val(Field(Field(py_args, 2), 0));       \
+            result = func(s, s_length, errors, &byteorder);             \
+        }                                                               \
+                                                                        \
+        CAMLreturn(wrap_obj(result));                                   \
+    }
+
+TypeUTF16Decoder(PyUnicode_DecodeUTF16, pywrap_steal)
+TypeUTF16Decoder(PyUnicode_DecodeUTF32, pywrap_steal)
 
 /*-----------------------------------------------------------------------*/
 
