@@ -639,6 +639,7 @@ val pyunicode_asutf32string : pyobject -> pyobject
 val pyunicode_decodeutf8 : (string * string option) -> pyobject
 val pyunicode_decodeutf16 : (string * string option * int option) -> pyobject
 val pyunicode_decodeutf32 : (string * string option * int option) -> pyobject
+val pyunicode_fromunicode : int array -> pyobject
 
 val pydict_new : unit -> pyobject 
 val pydict_getitem : pyobject * pyobject -> pyobject 

@@ -1546,6 +1546,30 @@ TypeUTF16Decoder(PyUnicode_DecodeUTF32, pywrap_steal)
 
 /*-----------------------------------------------------------------------*/
 
+#define TypePyUnicode_FromUnicode(func, wrap_obj)               \
+    CAMLprim value func##_wrapper(value u)                      \
+    {                                                           \
+        CAMLparam1(u);                                          \
+                                                                \
+        PyObject *result;                                       \
+        Py_ssize_t i;                                           \
+        Py_ssize_t length = Wosize_val(u);                      \
+                                                                \
+        result = PyUnicode_FromUnicode(NULL, length);           \
+        if (result != NULL) {                                   \
+            Py_UNICODE *p = PyUnicode_AS_UNICODE(result);       \
+            for (i = 0; i != length; i++) {                     \
+                p[i] = Int_val(Field(u, i)) & 0x7FFFFFFF;       \
+            }                                                   \
+        }                                                       \
+                                                                \
+        CAMLreturn(wrap_obj(result));                           \
+    }
+
+TypePyUnicode_FromUnicode(PyUnicode_FromUnicode, pywrap_steal)
+
+/*-----------------------------------------------------------------------*/
+
 /* Value -> Pyobject */
 
 value pywrapvalue( value cb ) {
