@@ -378,7 +378,7 @@ PyObject *pycall_callback_buggy( PyObject *obj, PyObject *args ) {
 	return Py_None;
     }
     v = (value *)PyCObject_AsVoidPtr( obj );
-    out = callback(*v,pywrap(args));
+    out = caml_callback(*v,pywrap(args));
     return pyunwrap(out);
 }
 */
@@ -412,7 +412,7 @@ PyObject *pycall_callback( PyObject *obj, PyObject *args )
     ml_func = * (value *) PyCObject_AsVoidPtr(obj);
 #endif
     ml_args = pywrap(args);
-    ml_out = callback(ml_func, ml_args);
+    ml_out = caml_callback(ml_func, ml_args);
     out = pyunwrap(ml_out);
     /* T.F.:
        The result which we have now is borrowed - most probably, 
@@ -1546,27 +1546,28 @@ TypeUTF16Decoder(PyUnicode_DecodeUTF32, pywrap_steal)
 
 /*-----------------------------------------------------------------------*/
 
-#define TypePyUnicode_FromUnicode(func, wrap_obj)               \
-    CAMLprim value func##_wrapper(value u)                      \
-    {                                                           \
-        CAMLparam1(u);                                          \
-                                                                \
-        PyObject *result;                                       \
-        Py_ssize_t i;                                           \
-        Py_ssize_t length = Wosize_val(u);                      \
-                                                                \
-        result = PyUnicode_FromUnicode(NULL, length);           \
-        if (result != NULL) {                                   \
-            Py_UNICODE *p = PyUnicode_AS_UNICODE(result);       \
-            for (i = 0; i != length; i++) {                     \
-                p[i] = Int_val(Field(u, i)) & 0x7FFFFFFF;       \
-            }                                                   \
-        }                                                       \
-                                                                \
-        CAMLreturn(wrap_obj(result));                           \
+CAMLprim value PyUnicode_FromUnicode_wrapper(value closure, value length)
+{
+    CAMLparam2(closure, length);
+    CAMLlocal2(index, val); /* We need named intermediate values for
+                             * garbage collection. */
+
+    PyObject *result;
+    Py_ssize_t i;
+    Py_ssize_t len = Int_val(length);
+
+    result = PyUnicode_FromUnicode(NULL, len);
+    if (result != NULL) {
+        Py_UNICODE *p = PyUnicode_AS_UNICODE(result);
+        for (i = 0; i < len; i++) {
+            index = Val_int(i);
+            val = caml_callback(closure, index);
+            p[i] = Int_val(val) & 0x7FFFFFFF;
+        }
     }
 
-TypePyUnicode_FromUnicode(PyUnicode_FromUnicode, pywrap_steal)
+    CAMLreturn(pywrap_steal(result));
+}
 
 /*-----------------------------------------------------------------------*/
 

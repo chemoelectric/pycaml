@@ -437,8 +437,8 @@ external pyunicode_decodeutf8 : (string * string option) -> pyobject = "PyUnicod
 external pyunicode_decodeutf16 : (string * string option * int option) -> pyobject = "PyUnicode_DecodeUTF16_wrapper"
 external pyunicode_decodeutf32 : (string * string option * int option) -> pyobject = "PyUnicode_DecodeUTF32_wrapper"
 
-(* TypePyUnicode_FromUnicode *)
-external pyunicode_fromunicode : int array -> pyobject = "PyUnicode_FromUnicode_wrapper"
+(* Its own type, unless and until we implement a similar function, someday. *)
+external pyunicode_fromunicode : (int -> int) -> int -> pyobject = "PyUnicode_FromUnicode_wrapper"
 
 (*-----------------------------------------------------------------------*)
 
