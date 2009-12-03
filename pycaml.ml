@@ -441,6 +441,7 @@ external pyunicode_decodeutf32 : (string * string option * int option) -> pyobje
 (*-----------------------------------------------------------------------*)
 
 external pyunicode_fromunicode : (int -> int) -> int -> pyobject = "PyUnicode_FromUnicode_wrapper"
+external pyunicode_asunicode   : pyobject -> int array = "PyUnicode_AsUnicode_wrapper"
 
 (*-----------------------------------------------------------------------*)
 

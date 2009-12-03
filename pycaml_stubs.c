@@ -1570,6 +1570,26 @@ CAMLprim value PyUnicode_FromUnicode_wrapper(value closure, value length)
     CAMLreturn(pywrap_steal(result));
 }
 
+CAMLprim value PyUnicode_AsUnicode_wrapper(value uni)
+{
+    CAMLparam1(uni);
+    CAMLlocal1(result);
+
+    PyObject *py_uni = pyunwrap(uni);
+    Py_UNICODE *p = PyUnicode_AsUnicode(py_uni);
+
+    if (p != NULL) {
+        Py_ssize_t len = PyUnicode_GET_SIZE(py_uni);
+        Py_ssize_t i;
+
+        result = caml_alloc(len, 0);
+        for (i = 0; i < len; i++)
+            Store_field(result, i, Val_int(p[i]));
+    }
+
+    CAMLreturn(result);
+}
+
 /*-----------------------------------------------------------------------*/
 
 /* Value -> Pyobject */
