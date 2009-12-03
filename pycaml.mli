@@ -640,7 +640,6 @@ val pyunicode_decodeutf8 : (string * string option) -> pyobject
 val pyunicode_decodeutf16 : (string * string option * int option) -> pyobject
 val pyunicode_decodeutf32 : (string * string option * int option) -> pyobject
 val pyunicode_fromunicode : (int -> int) -> int -> pyobject
-val pyunicode_asunicode   : pyobject -> int array
 val pyunicode_getsize     : pyobject -> int
 
 val pydict_new : unit -> pyobject 
