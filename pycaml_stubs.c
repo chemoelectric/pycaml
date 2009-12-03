@@ -938,6 +938,7 @@ Type18(PyMapping_Check)
 Type18(PyMapping_Size)
 Type18(PyMapping_Length)
 Type18(PyIter_Check)
+Type18(PyUnicode_GetSize)
 
 /*-----------------------------------------------------------------------*/
 
@@ -1552,9 +1553,9 @@ CAMLprim value PyUnicode_FromUnicode_wrapper(value closure, value length)
     CAMLlocal2(index, val); /* We need named intermediate values for
                              * garbage collection. */
 
-    PyObject *result;
-    Py_ssize_t i;
     Py_ssize_t len = Int_val(length);
+    Py_ssize_t i;
+    PyObject *result;
 
     result = PyUnicode_FromUnicode(NULL, len);
     if (result != NULL) {

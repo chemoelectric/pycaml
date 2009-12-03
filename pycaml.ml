@@ -273,6 +273,7 @@ external pymapping_check : pyobject -> int = "PyMapping_Check_wrapper"
 external pymapping_size : pyobject -> int = "PyMapping_Size_wrapper"
 external pymapping_length : pyobject -> int = "PyMapping_Length_wrapper"
 external pyiter_check : pyobject -> int = "PyIter_Check_wrapper"
+external pyunicode_getsize : pyobject -> int = "PyUnicode_GetSize_wrapper"
 
 (* Type19 *)
 external pyobject_hasattr : (pyobject * pyobject) -> int = "PyObject_HasAttr_wrapper"
@@ -437,7 +438,8 @@ external pyunicode_decodeutf8 : (string * string option) -> pyobject = "PyUnicod
 external pyunicode_decodeutf16 : (string * string option * int option) -> pyobject = "PyUnicode_DecodeUTF16_wrapper"
 external pyunicode_decodeutf32 : (string * string option * int option) -> pyobject = "PyUnicode_DecodeUTF32_wrapper"
 
-(* Its own type, unless and until we implement a similar function, someday. *)
+(*-----------------------------------------------------------------------*)
+
 external pyunicode_fromunicode : (int -> int) -> int -> pyobject = "PyUnicode_FromUnicode_wrapper"
 
 (*-----------------------------------------------------------------------*)
