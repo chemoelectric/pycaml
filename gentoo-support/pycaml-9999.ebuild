@@ -42,7 +42,6 @@ src_compile() {
 		cd "${WORKDIR}"
 		cp -r "${PN}" "${name}"
 		cd "${name}"
-		sed -i -e "/^browse_interfaces/s/Pycaml/Pycaml${name}/"
 		emake -j1 PYVER="${PYTHON_ABI}" PYVER_PACK="${abi}" \
 		      get_libdir="$(get_libdir)" || die "emake failed"
 	}
