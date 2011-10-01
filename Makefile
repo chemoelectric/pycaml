@@ -9,7 +9,7 @@ SOURCES = pycaml.ml pycaml.mli pycaml_stubs.c
 RESULT  = pycaml${PYVER_PACK}
 THREADS = yes
 LDFLAGS = -lpython${PYVER}
-CFLAGS  = -g -O2 -fPIC -Wall -Werror
+CFLAGS  = -g -O2 -fPIC -Wall
 OCAMLFLAGS = -pp "camlp4o -parser Camlp4MacroParser -D PYMAJOR`echo ${PYVER} | sed -e 's/\\..*//'`"
 OCAMLDEP = ocamldep ${OCAMLFLAGS}
 
